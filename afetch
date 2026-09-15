@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+"""afetch — Minimalist animated 3D ASCII celestial globe fetch tool.
+
+Smooth raymarched 3D sphere with planetary surface rotation and Matugen Slate palette.
+"""
+
+import argparse
+import atexit
+import json
+import math
+import os
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import termios
+import time
+import tty
+
+# ── ANSI Truecolor Palette (Matugen Fog / Slate) ────────────
+COLOR_RESET = "\033[0m"
+COLOR_BOLD = "\033[1m"
+COLOR_DIM = "\033[38;2;146;144;146m"        # #929092 (labels)
+COLOR_DIVIDER = "\033[38;2;71;70;72m"        # #474648 (vertical line)
+COLOR_TEXT = "\033[38;2;229;226;227m"       # #e5e2e3 (values)
+
+# 8 Palette Dots
+DOTS = (
+    "\033[38;2;255;180;171m● "   # Red
+    "\033[38;2;232;207;141m● "   # Yellow
+    "\033[38;2;163;212;160m● "   # Green
+    "\033[38;2;136;192;208m● "   # Cyan
+    "\033[38;2;133;154;234m● "   # Blue
+    "\033[38;2;192;198;220m● "   # Magenta
+    "\033[38;2;197;198;208m● "   # White
+    + COLOR_RESET
+)
+
+# ── 3D Sphere Geometry ─────────────────────────────────────
+GLOBE_WIDTH = 28
+GLOBE_HEIGHT = 15
+SPHERE_RADIUS_Y = 6.2
+SPHERE_RADIUS_X = SPHERE_RADIUS_Y * 2.05
+CHARS = " .·:+=*#%@"
+LIGHT = (0.577, -0.577, 0.577)
+TILT = 0.38  # ~22° axial tilt
+COS_TILT = math.cos(TILT)
+SIN_TILT = math.sin(TILT)
+
+# Terminal cleanup state
+_orig_termios = None
+_cursor_hidden = False
+
+
+def _restore_terminal():
+    global _cursor_hidden, _orig_termios
+    if _cursor_hidden:
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+        _cursor_hidden = False
+    if _orig_termios and sys.stdin.isatty():
+        try:
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _orig_termios)
+        except Exception:
+            pass
+
+
+atexit.register(_restore_terminal)
+
+
+def _signal_handler(signum, frame):
+    _restore_terminal()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
+
+
+def fetch_system_info() -> dict:
+    """Retrieve system information rapidly using fastfetch JSON or fallback."""
+    data = {
+        "user_host": "ikitto@IkittoCachy",
+        "os": "CachyOS x86_64",
+        "host": "PC",
+        "kernel": "Linux",
+        "wm": "driftwm (Wayland)",
+        "cpu": "AMD Ryzen",
+        "gpu": "Radeon Vega",
+        "memory": "7.0 GiB / 13.5 GiB",
+        "disk": "367 GiB / 462 GiB",
+        "packages": "1600 (pacman)",
+        "terminal": "kitty",
+    }
+    try:
+        proc = subprocess.run(
+            [
+                "fastfetch",
+                "-s",
+                "Title:OS:Host:Kernel:WM:CPU:GPU:Memory:Disk:Packages:Terminal",
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        if proc.returncode == 0:
+            parsed = json.loads(proc.stdout)
+            for item in parsed:
+                mtype = item.get("type", "").lower()
+                res = item.get("result", {})
+                if mtype == "title":
+                    u = res.get("userName") or "user"
+                    h = res.get("hostName") or "host"
+                    data["user_host"] = f"{u}@{h}"
+                elif mtype == "os":
+                    name = res.get("prettyName") or res.get("name") or "Linux"
+                    arch = res.get("architecture") or ""
+                    data["os"] = f"{name} {arch}".strip()
+                elif mtype == "host":
+                    data["host"] = res.get("name") or res.get("family") or "Desktop"
+                elif mtype == "kernel":
+                    kname = res.get("name", "Linux")
+                    rel = res.get("release", "")
+                    data["kernel"] = f"{kname} {rel}".strip()
+                elif mtype == "wm":
+                    pname = res.get("prettyName") or res.get("processName") or "driftwm"
+                    proto = res.get("protocolName", "")
+                    data["wm"] = f"{pname} ({proto})" if proto else pname
+                elif mtype == "cpu":
+                    cname = res.get("cpu", "CPU")
+                    cores = res.get("cores", {}).get("logical")
+                    freq = res.get("frequency", {}).get("max", 0) / 1000
+                    if cores and freq > 0:
+                        data["cpu"] = f"{cname} ({cores}) @ {freq:.2f} GHz"
+                    else:
+                        data["cpu"] = cname
+                elif mtype == "gpu":
+                    if isinstance(res, list) and res:
+                        gname = res[0].get("name", "GPU")
+                        data["gpu"] = gname.split(" / ")[0]
+                elif mtype == "memory":
+                    used_gb = res.get("used", 0) / (1024**3)
+                    tot_gb = res.get("total", 0) / (1024**3)
+                    pct = int(used_gb / tot_gb * 100) if tot_gb else 0
+                    data["memory"] = f"{used_gb:.2f} GiB / {tot_gb:.2f} GiB ({pct}%)"
+                elif mtype == "disk":
+                    if isinstance(res, list) and res:
+                        d0 = res[0].get("bytes", {})
+                        u_gb = d0.get("used", 0) / (1024**3)
+                        t_gb = d0.get("total", 0) / (1024**3)
+                        pct = int(u_gb / t_gb * 100) if t_gb else 0
+                        data["disk"] = f"{u_gb:.2f} GiB / {t_gb:.2f} GiB ({pct}%)"
+                elif mtype == "packages":
+                    pac = res.get("pacman")
+                    data["packages"] = f"{pac} (pacman)" if pac else str(res.get("all", ""))
+                elif mtype == "terminal":
+                    pname = res.get("prettyName") or res.get("processName") or "kitty"
+                    if "antigravity" in pname:
+                        pname = "kitty"
+                    ver = res.get("version", "")
+                    data["terminal"] = f"{pname} {ver}".strip() if ver else pname
+    except Exception:
+        pass
+    return data
+
+
+def render_globe_frame(angle: float) -> list[str]:
+    """Raymarch a smooth rotating 3D planetary sphere with zero popping or jitter."""
+    grid = [[" " for _ in range(GLOBE_WIDTH)] for _ in range(GLOBE_HEIGHT)]
+    colors = [["" for _ in range(GLOBE_WIDTH)] for _ in range(GLOBE_HEIGHT)]
+
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+
+    cx = GLOBE_WIDTH / 2.0 - 0.5
+    cy = GLOBE_HEIGHT / 2.0 - 0.5
+
+    for py in range(GLOBE_HEIGHT):
+        dy = (py - cy) / SPHERE_RADIUS_Y
+        for px in range(GLOBE_WIDTH):
+            dx = (px - cx) / SPHERE_RADIUS_X
+            d2 = dx * dx + dy * dy
+            if d2 <= 1.0:
+                dz = math.sqrt(max(0.0, 1.0 - d2))
+
+                # Surface normal in screen/world space
+                nx, ny, nz = dx, dy, dz
+
+                # Inverse rotation to find local planetary coordinates (lat, lon)
+                # 1. Un-tilt (X-axis)
+                y1 = dy * COS_TILT + dz * SIN_TILT
+                z1 = -dy * SIN_TILT + dz * COS_TILT
+                x1 = dx
+
+                # 2. Un-rotate (Y-axis)
+                x_loc = x1 * cos_a - z1 * sin_a
+                z_loc = x1 * sin_a + z1 * cos_a
+                y_loc = y1
+
+                lat = math.asin(min(max(y_loc, -1.0), 1.0))
+                lon = math.atan2(z_loc, x_loc)
+
+                # Diffuse lighting & specular reflection
+                diff = max(nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2], 0.0)
+                spec = math.pow(max(0.0, (nx * LIGHT[0] + ny * LIGHT[1] + (nz + 1.0) * LIGHT[2]) / 1.7), 4)
+
+                # Procedural planetary surface features
+                c1 = math.sin(2.0 * lon) * math.cos(3.0 * lat)
+                c2 = 0.5 * math.sin(4.0 * lon + 1.5) * math.sin(2.0 * lat)
+                c3 = 0.25 * math.cos(6.0 * lon - 2.0) * math.cos(5.0 * lat)
+                noise = c1 + c2 + c3
+
+                is_land = noise > 0.05
+                grid_line = abs(math.cos(lat * 6.0)) > 0.95 or abs(math.cos(lon * 8.0)) > 0.95
+
+                # Combined illumination intensity
+                intensity = 0.48 * diff + 0.22 * dz
+                if is_land:
+                    intensity += 0.30
+                else:
+                    intensity += 0.08
+                if grid_line:
+                    intensity += 0.15
+                intensity += 0.35 * spec
+
+                lum = min(max(intensity, 0.0), 1.0)
+                idx = int(lum * (len(CHARS) - 1))
+                grid[py][px] = CHARS[idx]
+
+                # Truecolor depth & illumination grading
+                if lum > 0.82:
+                    colors[py][px] = "\033[38;2;245;244;248m"  # Gleam specular
+                elif is_land:
+                    colors[py][px] = "\033[38;2;194;198;214m"  # Primary slate land
+                elif grid_line:
+                    colors[py][px] = "\033[38;2;133;154;234m"  # Cosmic blue parallels
+                else:
+                    colors[py][px] = "\033[38;2;85;90;105m"    # Deep shadow ocean
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        row_str = "".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET
+        lines.append(row_str)
+    return lines
+
+
+def build_info_lines(data: dict) -> list[str]:
+    """Format the right-side information card matching the screenshot."""
+    uh = data["user_host"]
+    header_pad = " " * 12
+    return [
+        f"{header_pad}{COLOR_BOLD}{COLOR_TEXT}{uh}{COLOR_RESET}",
+        "",
+        f"{COLOR_DIM}{'OS':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['os']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Host':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['host']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Kernel':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['kernel']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'WM':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['wm']}{COLOR_RESET}",
+        "",
+        f"{COLOR_DIM}{'CPU':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['cpu']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'GPU':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['gpu']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Memory':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['memory']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Disk':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['disk']}{COLOR_RESET}",
+        "",
+        f"{COLOR_DIM}{'Packages':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['packages']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Terminal':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['terminal']}{COLOR_RESET}",
+        f"{COLOR_DIM}{'Colors':<9}{COLOR_DIVIDER}│ {DOTS}",
+    ]
+
+
+CARD_RAW_WIDTH = 74
+CARD_RAW_HEIGHT = 15
+
+
+def compose_centered_card(globe_lines: list[str], info_lines: list[str]) -> str:
+    """Compose the card centered dynamically in the terminal window."""
+    try:
+        cols, rows = shutil.get_terminal_size((80, 24))
+    except Exception:
+        cols, rows = 80, 24
+
+    top_pad = max((rows - CARD_RAW_HEIGHT) // 2, 0)
+    left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
+
+    lines = [""] * top_pad
+    for g, info in zip(globe_lines, info_lines):
+        lines.append(f"{left_pad}{g}    {info}\033[K")
+    return "\n".join(lines)
+
+
+def run_animated(info: dict, fps: int = 35):
+    """Run continuous 3D rotation until any key is pressed or Ctrl+C."""
+    global _cursor_hidden, _orig_termios
+    info_lines = build_info_lines(info)
+    frame_delay = 1.0 / max(fps, 1)
+
+    is_tty = sys.stdin.isatty() and sys.stdout.isatty()
+    if is_tty:
+        _orig_termios = termios.tcgetattr(sys.stdin.fileno())
+        tty.setcbreak(sys.stdin.fileno())
+        sys.stdout.write("\033[?25l")  # Hide cursor
+        _cursor_hidden = True
+
+    angle = 0.0
+
+    try:
+        # Clear screen once at start
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.flush()
+
+        while True:
+            # Check key press (non-blocking)
+            if is_tty:
+                r, _, _ = select.select([sys.stdin], [], [], 0)
+                if r:
+                    sys.stdin.read(1)
+                    break
+
+            globe = render_globe_frame(angle)
+            card = compose_centered_card(globe, info_lines)
+
+            # Move cursor to Home and redraw cleanly
+            sys.stdout.write("\033[H" + card)
+            sys.stdout.flush()
+
+            angle += 0.04
+            time.sleep(frame_delay)
+    finally:
+        _restore_terminal()
+        # Clean transition to shell prompt
+        sys.stdout.write("\n\n")
+        sys.stdout.flush()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="afetch — Minimalist animated 3D ASCII celestial globe fetch."
+    )
+    parser.add_argument(
+        "-s",
+        "--static",
+        action="store_true",
+        help="Print single centered frame statically without animation.",
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=35,
+        help="Frame rate for animation (default: 35).",
+    )
+    args = parser.parse_args()
+
+    info = fetch_system_info()
+
+    if args.static:
+        globe = render_globe_frame(1.2)
+        info_lines = build_info_lines(info)
+        print(compose_centered_card(globe, info_lines))
+        return
+
+    run_animated(info, fps=args.fps)
+
+
+if __name__ == "__main__":
+    main()
