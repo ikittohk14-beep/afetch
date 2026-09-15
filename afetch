@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""afetch — Minimalist animated 3D ASCII celestial globe fetch tool.
+"""afetch — Minimalist animated 3D ASCII system information fetch tool.
 
-Smooth raymarched 3D sphere with planetary surface rotation and Matugen Slate palette.
+Supports multiple selectable 3D ASCII animation modes:
+  • globe (default) — Raymarched rotating 3D planet with surface features
+  • saturn          — 3D planet with tilted elliptical planetary rings
+  • donut           — Classic 3D mathematical torus rotating in dual axes
+  • cube            — Shaded 3D rotating wireframe/solid cube
+  • galaxy          — Spiral galaxy / vortex with swirling star arms
+  • dna             — Rotating 3D double helix strand
+
+MIT License © 2026 ikittohk14-beep
 """
 
 import argparse
@@ -9,6 +17,8 @@ import atexit
 import json
 import math
 import os
+import platform
+import random
 import select
 import shutil
 import signal
@@ -18,12 +28,12 @@ import termios
 import time
 import tty
 
-# ── ANSI Truecolor Palette (Matugen Fog / Slate) ────────────
+# ── ANSI Truecolor Palette (Matugen Slate) ──────────────────
 COLOR_RESET = "\033[0m"
 COLOR_BOLD = "\033[1m"
-COLOR_DIM = "\033[38;2;146;144;146m"        # #929092 (labels)
-COLOR_DIVIDER = "\033[38;2;71;70;72m"        # #474648 (vertical line)
-COLOR_TEXT = "\033[38;2;229;226;227m"       # #e5e2e3 (values)
+COLOR_DIM = "\033[38;2;146;144;146m"        # #929092 (Labels)
+COLOR_DIVIDER = "\033[38;2;71;70;72m"        # #474648 (Vertical line │)
+COLOR_TEXT = "\033[38;2;229;226;227m"       # #e5e2e3 (Values)
 
 # 8 Palette Dots
 DOTS = (
@@ -37,16 +47,14 @@ DOTS = (
     + COLOR_RESET
 )
 
-# ── 3D Sphere Geometry ─────────────────────────────────────
-GLOBE_WIDTH = 28
-GLOBE_HEIGHT = 15
-SPHERE_RADIUS_Y = 6.2
-SPHERE_RADIUS_X = SPHERE_RADIUS_Y * 2.05
+# ── Geometry Constants ─────────────────────────────────────
+CANVAS_WIDTH = 28
+CANVAS_HEIGHT = 15
 CHARS = " .·:+=*#%@"
 LIGHT = (0.577, -0.577, 0.577)
-TILT = 0.38  # ~22° axial tilt
-COS_TILT = math.cos(TILT)
-SIN_TILT = math.sin(TILT)
+
+CARD_RAW_WIDTH = 74
+CARD_RAW_HEIGHT = 15
 
 # Terminal cleanup state
 _orig_termios = None
@@ -78,21 +86,26 @@ signal.signal(signal.SIGINT, _signal_handler)
 signal.signal(signal.SIGTERM, _signal_handler)
 
 
+# ── System Information Fetcher ──────────────────────────────
 def fetch_system_info() -> dict:
-    """Retrieve system information rapidly using fastfetch JSON or fallback."""
+    """Retrieve system information rapidly with fastfetch JSON and stdlib fallback."""
+    user = os.environ.get("USER", "user")
+    host = platform.node() or "host"
     data = {
-        "user_host": "ikitto@IkittoCachy",
-        "os": "CachyOS x86_64",
-        "host": "PC",
-        "kernel": "Linux",
-        "wm": "driftwm (Wayland)",
-        "cpu": "AMD Ryzen",
-        "gpu": "Radeon Vega",
-        "memory": "7.0 GiB / 13.5 GiB",
-        "disk": "367 GiB / 462 GiB",
-        "packages": "1600 (pacman)",
-        "terminal": "kitty",
+        "user_host": f"{user}@{host}",
+        "os": f"{platform.system()} {platform.machine()}",
+        "host": "Desktop",
+        "kernel": f"{platform.system()} {platform.release()}",
+        "wm": os.environ.get("XDG_CURRENT_DESKTOP") or os.environ.get("DESKTOP_SESSION") or "Wayland",
+        "cpu": platform.processor() or "CPU",
+        "gpu": "GPU",
+        "memory": "Memory",
+        "disk": "Disk",
+        "packages": "Packages",
+        "terminal": os.environ.get("TERM_PROGRAM") or os.environ.get("TERM") or "terminal",
     }
+
+    # Fastfetch JSON integration (<20ms)
     try:
         proc = subprocess.run(
             [
@@ -104,7 +117,7 @@ def fetch_system_info() -> dict:
             ],
             capture_output=True,
             text=True,
-            timeout=1.5,
+            timeout=1.2,
             check=False,
         )
         if proc.returncode == 0:
@@ -113,8 +126,8 @@ def fetch_system_info() -> dict:
                 mtype = item.get("type", "").lower()
                 res = item.get("result", {})
                 if mtype == "title":
-                    u = res.get("userName") or "user"
-                    h = res.get("hostName") or "host"
+                    u = res.get("userName") or user
+                    h = res.get("hostName") or host
                     data["user_host"] = f"{u}@{h}"
                 elif mtype == "os":
                     name = res.get("prettyName") or res.get("name") or "Linux"
@@ -165,38 +178,36 @@ def fetch_system_info() -> dict:
                     data["terminal"] = f"{pname} {ver}".strip() if ver else pname
     except Exception:
         pass
+
     return data
 
 
-def render_globe_frame(angle: float) -> list[str]:
-    """Raymarch a smooth rotating 3D planetary sphere with zero popping or jitter."""
-    grid = [[" " for _ in range(GLOBE_WIDTH)] for _ in range(GLOBE_HEIGHT)]
-    colors = [["" for _ in range(GLOBE_WIDTH)] for _ in range(GLOBE_HEIGHT)]
+# ── 3D Mathematical Renderers ──────────────────────────────
 
-    cos_a = math.cos(angle)
-    sin_a = math.sin(angle)
+def render_globe(angle: float) -> list[str]:
+    """3D Raymarched Planet with continuous surface rotation and lighting."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    ry = 6.2
+    rx = ry * 2.05
+    tilt = 0.38
+    cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    cx, cy = CANVAS_WIDTH / 2.0 - 0.5, CANVAS_HEIGHT / 2.0 - 0.5
 
-    cx = GLOBE_WIDTH / 2.0 - 0.5
-    cy = GLOBE_HEIGHT / 2.0 - 0.5
-
-    for py in range(GLOBE_HEIGHT):
-        dy = (py - cy) / SPHERE_RADIUS_Y
-        for px in range(GLOBE_WIDTH):
-            dx = (px - cx) / SPHERE_RADIUS_X
+    for py in range(CANVAS_HEIGHT):
+        dy = (py - cy) / ry
+        for px in range(CANVAS_WIDTH):
+            dx = (px - cx) / rx
             d2 = dx * dx + dy * dy
             if d2 <= 1.0:
                 dz = math.sqrt(max(0.0, 1.0 - d2))
-
-                # Surface normal in screen/world space
                 nx, ny, nz = dx, dy, dz
 
-                # Inverse rotation to find local planetary coordinates (lat, lon)
-                # 1. Un-tilt (X-axis)
-                y1 = dy * COS_TILT + dz * SIN_TILT
-                z1 = -dy * SIN_TILT + dz * COS_TILT
+                y1 = dy * cos_t + dz * sin_t
+                z1 = -dy * sin_t + dz * cos_t
                 x1 = dx
 
-                # 2. Un-rotate (Y-axis)
                 x_loc = x1 * cos_a - z1 * sin_a
                 z_loc = x1 * sin_a + z1 * cos_a
                 y_loc = y1
@@ -204,11 +215,9 @@ def render_globe_frame(angle: float) -> list[str]:
                 lat = math.asin(min(max(y_loc, -1.0), 1.0))
                 lon = math.atan2(z_loc, x_loc)
 
-                # Diffuse lighting & specular reflection
                 diff = max(nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2], 0.0)
                 spec = math.pow(max(0.0, (nx * LIGHT[0] + ny * LIGHT[1] + (nz + 1.0) * LIGHT[2]) / 1.7), 4)
 
-                # Procedural planetary surface features
                 c1 = math.sin(2.0 * lon) * math.cos(3.0 * lat)
                 c2 = 0.5 * math.sin(4.0 * lon + 1.5) * math.sin(2.0 * lat)
                 c3 = 0.25 * math.cos(6.0 * lon - 2.0) * math.cos(5.0 * lat)
@@ -217,7 +226,6 @@ def render_globe_frame(angle: float) -> list[str]:
                 is_land = noise > 0.05
                 grid_line = abs(math.cos(lat * 6.0)) > 0.95 or abs(math.cos(lon * 8.0)) > 0.95
 
-                # Combined illumination intensity
                 intensity = 0.48 * diff + 0.22 * dz
                 if is_land:
                     intensity += 0.30
@@ -228,28 +236,296 @@ def render_globe_frame(angle: float) -> list[str]:
                 intensity += 0.35 * spec
 
                 lum = min(max(intensity, 0.0), 1.0)
-                idx = int(lum * (len(CHARS) - 1))
-                grid[py][px] = CHARS[idx]
+                grid[py][px] = CHARS[int(lum * (len(CHARS) - 1))]
 
-                # Truecolor depth & illumination grading
                 if lum > 0.82:
-                    colors[py][px] = "\033[38;2;245;244;248m"  # Gleam specular
+                    colors[py][px] = "\033[38;2;245;244;248m"  # Gleam
                 elif is_land:
-                    colors[py][px] = "\033[38;2;194;198;214m"  # Primary slate land
+                    colors[py][px] = "\033[38;2;194;198;214m"  # Primary
                 elif grid_line:
-                    colors[py][px] = "\033[38;2;133;154;234m"  # Cosmic blue parallels
+                    colors[py][px] = "\033[38;2;133;154;234m"  # Parallels
                 else:
-                    colors[py][px] = "\033[38;2;85;90;105m"    # Deep shadow ocean
+                    colors[py][px] = "\033[38;2;85;90;105m"    # Oceans
 
     lines = []
     for row_c, row_ch in zip(colors, grid):
-        row_str = "".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET
-        lines.append(row_str)
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
     return lines
 
 
+def render_saturn(angle: float) -> list[str]:
+    """3D Planet with Tilted Elliptical Rings and Cassini Division."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    r_p_y = 4.5
+    r_p_x = r_p_y * 2.05
+    tilt = 0.45
+    cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+    cx, cy = CANVAS_WIDTH / 2.0 - 0.5, CANVAS_HEIGHT / 2.0 - 0.5
+
+    for py in range(CANVAS_HEIGHT):
+        dy = (py - cy)
+        for px in range(CANVAS_WIDTH):
+            dx = (px - cx)
+            dx_p = dx / r_p_x
+            dy_p = dy / r_p_y
+            d2_p = dx_p * dx_p + dy_p * dy_p
+            z_planet = -999.0
+            if d2_p <= 1.0:
+                z_planet = math.sqrt(1.0 - d2_p) * r_p_y
+
+            z_ring = -999.0
+            if abs(sin_t) > 0.001:
+                zr = dy * (cos_t / sin_t)
+                yr = dy * sin_t + zr * cos_t
+                xr = dx / 2.05
+                r_ring = math.sqrt(xr * xr + yr * yr)
+                if 5.5 <= r_ring <= 10.5 and (r_ring < 7.2 or r_ring > 7.7):
+                    z_ring = zr
+
+            if z_planet > -900 and (z_ring < -900 or z_planet >= z_ring):
+                nx, ny, nz = dx_p, dy_p, z_planet / r_p_y
+                diff = max(nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2], 0.0)
+                band = math.sin(dy_p * 8.0 + math.sin(angle + dx_p * 2.0) * 0.5)
+                lum = min(max(0.45 * diff + 0.35 + band * 0.15, 0.0), 1.0)
+                grid[py][px] = CHARS[int(lum * (len(CHARS) - 1))]
+                colors[py][px] = "\033[38;2;194;198;214m" if lum > 0.5 else "\033[38;2;133;154;234m"
+            elif z_ring > -900:
+                in_shadow = (z_ring < 0 and d2_p < 1.0)
+                if not in_shadow:
+                    lum = min(max(0.55 + 0.35 * math.sin(dx * 0.5 + angle), 0.0), 1.0)
+                    grid[py][px] = "=:+*#"[int(lum * 4)]
+                    colors[py][px] = "\033[38;2;133;154;234m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+def render_donut(angle: float) -> list[str]:
+    """Classic 3D Mathematical Torus rotating in dual axes."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    zbuf = [[-999.0 for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    A = angle
+    B = angle * 0.6
+    cos_a, sin_a = math.cos(A), math.sin(A)
+    cos_b, sin_b = math.cos(B), math.sin(B)
+    r1, r2 = 4.2, 2.0
+
+    for j in range(0, 628, 7):
+        phi = j / 100.0
+        cos_p, sin_p = math.cos(phi), math.sin(phi)
+        for i in range(0, 628, 3):
+            theta = i / 100.0
+            cos_t, sin_t = math.cos(theta), math.sin(theta)
+
+            circ_x = r1 + r2 * cos_t
+            circ_y = r2 * sin_t
+
+            x = circ_x * (cos_b * cos_p + sin_a * sin_b * sin_p) - circ_y * cos_a * sin_b
+            y = circ_x * (sin_b * cos_p - sin_a * cos_b * sin_p) + circ_y * cos_a * cos_b
+            z = circ_x * cos_a * sin_p + circ_y * sin_a
+
+            nx = cos_t * (cos_b * cos_p + sin_a * sin_b * sin_p) - sin_t * cos_a * sin_b
+            ny = cos_t * (sin_b * cos_p - sin_a * cos_b * sin_p) + sin_t * cos_a * cos_b
+            nz = cos_t * cos_a * sin_p + sin_t * sin_a
+
+            px = int(CANVAS_WIDTH / 2.0 + x * 1.9)
+            py = int(CANVAS_HEIGHT / 2.0 + y)
+
+            if 0 <= px < CANVAS_WIDTH and 0 <= py < CANVAS_HEIGHT:
+                if z > zbuf[py][px]:
+                    zbuf[py][px] = z
+                    diff = max(0.0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2])
+                    lum = min(max(diff * 0.75 + (z + 6.0) / 15.0 * 0.25, 0.0), 1.0)
+                    grid[py][px] = CHARS[int(lum * (len(CHARS) - 1))]
+                    if lum > 0.75:
+                        colors[py][px] = "\033[38;2;245;244;248m"
+                    elif lum > 0.4:
+                        colors[py][px] = "\033[38;2;194;198;214m"
+                    else:
+                        colors[py][px] = "\033[38;2;85;90;105m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+def render_cube(angle: float) -> list[str]:
+    """3D Solid and Wireframe Cube with illuminated faces and highlighted edges."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    zbuf = [[-999.0 for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    A = angle * 0.8
+    B = angle * 0.6
+    C = angle * 0.4
+    cos_a, sin_a = math.cos(A), math.sin(A)
+    cos_b, sin_b = math.cos(B), math.sin(B)
+    cos_c, sin_c = math.cos(C), math.sin(C)
+    size = 3.6
+    step = 0.28
+
+    faces = [
+        ((0, 0, 1), [(u, v, size) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ((0, 0, -1), [(u, v, -size) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ((0, 1, 0), [(u, size, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ((0, -1, 0), [(u, -size, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ((1, 0, 0), [(size, u, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ((-1, 0, 0), [(-size, u, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+    ]
+
+    for fn, pts in faces:
+        fnx = fn[0] * cos_c - fn[1] * sin_c
+        fny = fn[0] * sin_c + fn[1] * cos_c
+        fnz = fn[2]
+
+        fx = fnx * cos_a - fnz * sin_a
+        fz = fnx * sin_a + fnz * cos_a
+
+        fy = fny * cos_b - fz * sin_b
+        fz = fny * sin_b + fz * cos_b
+
+        if fz > -0.05:
+            diff = max(0.0, fx * LIGHT[0] + fy * LIGHT[1] + fz * LIGHT[2])
+            for px_l, py_l, pz_l in pts:
+                x1 = px_l * cos_c - py_l * sin_c
+                y1 = px_l * sin_c + py_l * cos_c
+                z1 = pz_l
+
+                x2 = x1 * cos_a - z1 * sin_a
+                z2 = x1 * sin_a + z1 * cos_a
+
+                y3 = y1 * cos_b - z2 * sin_b
+                z3 = y1 * sin_b + z2 * cos_b
+
+                is_edge = (abs(abs(px_l) - size) < step * 0.6) or (abs(abs(py_l) - size) < step * 0.6) or (abs(abs(pz_l) - size) < step * 0.6)
+
+                px_s = int(CANVAS_WIDTH / 2.0 + x2 * 1.85)
+                py_s = int(CANVAS_HEIGHT / 2.0 + y3)
+
+                if 0 <= px_s < CANVAS_WIDTH and 0 <= py_s < CANVAS_HEIGHT:
+                    if z3 > zbuf[py_s][px_s]:
+                        zbuf[py_s][px_s] = z3
+                        lum = min(max(diff * 0.7 + (z3 + 5) / 12.0 * 0.3, 0.0), 1.0)
+                        if is_edge:
+                            grid[py_s][px_s] = "#"
+                            colors[py_s][px_s] = "\033[38;2;245;244;248m"
+                        else:
+                            grid[py_s][px_s] = CHARS[int(lum * (len(CHARS) - 1))]
+                            colors[py_s][px_s] = "\033[38;2;194;198;214m" if lum > 0.4 else "\033[38;2;85;90;105m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+def render_galaxy(angle: float) -> list[str]:
+    """3D Spiral Galaxy / Accretion Vortex with swirling star arms."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    cx, cy = CANVAS_WIDTH / 2.0 - 0.5, CANVAS_HEIGHT / 2.0 - 0.5
+    tilt = 0.55
+    cos_t, sin_t = math.cos(tilt), math.sin(tilt)
+
+    num_particles = 180
+    for i in range(num_particles):
+        t = (i / float(num_particles)) * 4.5 * math.pi
+        r = (i / float(num_particles)) * 9.5 + 0.5
+
+        for arm in [0, math.pi]:
+            theta = t + arm - angle * 1.2
+            scatter_r = math.sin(i * 12.3) * 0.4
+            scatter_th = math.cos(i * 7.7) * 0.2
+
+            x_g = (r + scatter_r) * math.cos(theta + scatter_th)
+            y_g = (r + scatter_r) * math.sin(theta + scatter_th)
+            z_g = math.sin(i * 5.1) * (0.8 * (1.0 - r / 10.0))
+
+            yt = y_g * cos_t - z_g * sin_t
+
+            px = int(cx + x_g * 1.35)
+            py = int(cy + yt)
+
+            if 0 <= px < CANVAS_WIDTH and 0 <= py < CANVAS_HEIGHT:
+                intensity = 1.0 - (r / 10.5)
+                idx = int(intensity * (len(CHARS) - 1))
+                ch = CHARS[min(max(idx, 1), len(CHARS) - 1)]
+                grid[py][px] = ch
+                if r < 3.0:
+                    colors[py][px] = "\033[38;2;245;244;248m"  # Core
+                elif r < 6.5:
+                    colors[py][px] = "\033[38;2;133;154;234m"  # Arms
+                else:
+                    colors[py][px] = "\033[38;2;192;198;220m"  # Dust
+
+    grid[int(cy)][int(cx)] = "●"
+    colors[int(cy)][int(cx)] = "\033[38;2;255;180;171m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+def render_dna(angle: float) -> list[str]:
+    """Rotating 3D Double Helix DNA Strand with base-pair rungs."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    zbuf = [[-999.0 for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    cx = CANVAS_WIDTH / 2.0 - 0.5
+    r = 5.5
+
+    for row in range(CANVAS_HEIGHT):
+        t = (row / CANVAS_HEIGHT) * 3.5 * math.pi + angle
+        x1 = r * math.cos(t)
+        z1 = r * math.sin(t)
+        x2 = -x1
+        z2 = -z1
+
+        num_rung = 14
+        for step in range(num_rung + 1):
+            alpha = step / float(num_rung)
+            xr = x1 * (1.0 - alpha) + x2 * alpha
+            zr = z1 * (1.0 - alpha) + z2 * alpha
+
+            px = int(cx + xr * 1.6)
+            py = row
+            if 0 <= px < CANVAS_WIDTH and 0 <= py < CANVAS_HEIGHT:
+                if zr > zbuf[py][px]:
+                    zbuf[py][px] = zr
+                    grid[py][px] = "═" if (0 < step < num_rung) else "●"
+                    if step in (0, num_rung):
+                        colors[py][px] = "\033[38;2;245;244;248m" if zr > 0 else "\033[38;2;133;154;234m"
+                    else:
+                        colors[py][px] = "\033[38;2;194;198;214m" if zr > 0 else "\033[38;2;85;90;105m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+ANIMATION_MODES = {
+    "globe": render_globe,
+    "planet": render_globe,
+    "saturn": render_saturn,
+    "donut": render_donut,
+    "torus": render_donut,
+    "cube": render_cube,
+    "galaxy": render_galaxy,
+    "vortex": render_galaxy,
+    "dna": render_dna,
+}
+
+
+# ── Card Composition & Terminal Centering ───────────────────
+
 def build_info_lines(data: dict) -> list[str]:
-    """Format the right-side information card matching the screenshot."""
+    """Format the right-side information card matching the minimalist layout."""
     uh = data["user_host"]
     header_pad = " " * 12
     return [
@@ -271,11 +547,7 @@ def build_info_lines(data: dict) -> list[str]:
     ]
 
 
-CARD_RAW_WIDTH = 74
-CARD_RAW_HEIGHT = 15
-
-
-def compose_centered_card(globe_lines: list[str], info_lines: list[str]) -> str:
+def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
     """Compose the card centered dynamically in the terminal window."""
     try:
         cols, rows = shutil.get_terminal_size((80, 24))
@@ -286,12 +558,12 @@ def compose_centered_card(globe_lines: list[str], info_lines: list[str]) -> str:
     left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
 
     lines = [""] * top_pad
-    for g, info in zip(globe_lines, info_lines):
-        lines.append(f"{left_pad}{g}    {info}\033[K")
+    for art, info in zip(art_lines, info_lines):
+        lines.append(f"{left_pad}{art}    {info}\033[K")
     return "\n".join(lines)
 
 
-def run_animated(info: dict, fps: int = 35):
+def run_animated(info: dict, render_fn, fps: int = 35):
     """Run continuous 3D rotation until any key is pressed or Ctrl+C."""
     global _cursor_hidden, _orig_termios
     info_lines = build_info_lines(info)
@@ -301,43 +573,53 @@ def run_animated(info: dict, fps: int = 35):
     if is_tty:
         _orig_termios = termios.tcgetattr(sys.stdin.fileno())
         tty.setcbreak(sys.stdin.fileno())
-        sys.stdout.write("\033[?25l")  # Hide cursor
+        sys.stdout.write("\033[?25l")
         _cursor_hidden = True
 
     angle = 0.0
 
     try:
-        # Clear screen once at start
         sys.stdout.write("\033[2J\033[H")
         sys.stdout.flush()
 
         while True:
-            # Check key press (non-blocking)
             if is_tty:
                 r, _, _ = select.select([sys.stdin], [], [], 0)
                 if r:
                     sys.stdin.read(1)
                     break
 
-            globe = render_globe_frame(angle)
-            card = compose_centered_card(globe, info_lines)
+            art_lines = render_fn(angle)
+            card = compose_centered_card(art_lines, info_lines)
 
-            # Move cursor to Home and redraw cleanly
             sys.stdout.write("\033[H" + card)
             sys.stdout.flush()
 
-            angle += 0.04
+            angle += 0.045
             time.sleep(frame_delay)
     finally:
         _restore_terminal()
-        # Clean transition to shell prompt
         sys.stdout.write("\n\n")
         sys.stdout.flush()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="afetch — Minimalist animated 3D ASCII celestial globe fetch."
+        description="afetch — Minimalist animated 3D ASCII system information fetch."
+    )
+    parser.add_argument(
+        "-m",
+        "--mode",
+        type=str,
+        default="globe",
+        choices=list(ANIMATION_MODES.keys()),
+        help="Animation preset to render (default: globe).",
+    )
+    parser.add_argument(
+        "-r",
+        "--random",
+        action="store_true",
+        help="Pick a random 3D animation mode on launch.",
     )
     parser.add_argument(
         "-s",
@@ -351,17 +633,37 @@ def main():
         default=35,
         help="Frame rate for animation (default: 35).",
     )
+    parser.add_argument(
+        "--list-modes",
+        action="store_true",
+        help="List all available animation presets and exit.",
+    )
     args = parser.parse_args()
 
+    if args.list_modes:
+        print("Available 3D ASCII animation modes in afetch:")
+        print("  • globe   / planet  - 3D Rotating Planet with continental terrain")
+        print("  • saturn            - 3D Planet with Tilted Orbital Rings")
+        print("  • donut   / torus   - Classic Dual-Axis 3D Mathematical Torus")
+        print("  • cube              - Solid/Wireframe Rotating 3D Cube")
+        print("  • galaxy  / vortex  - Spiral Galaxy with Accretion Core")
+        print("  • dna               - Rotating 3D Double Helix Strand")
+        return
+
+    mode_name = args.mode.lower()
+    if args.random:
+        mode_name = random.choice(["globe", "saturn", "donut", "cube", "galaxy", "dna"])
+
+    render_fn = ANIMATION_MODES.get(mode_name, render_globe)
     info = fetch_system_info()
 
     if args.static:
-        globe = render_globe_frame(1.2)
+        art = render_fn(1.2)
         info_lines = build_info_lines(info)
-        print(compose_centered_card(globe, info_lines))
+        print(compose_centered_card(art, info_lines))
         return
 
-    run_animated(info, fps=args.fps)
+    run_animated(info, render_fn, fps=args.fps)
 
 
 if __name__ == "__main__":

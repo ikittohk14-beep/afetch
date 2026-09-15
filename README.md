@@ -2,87 +2,172 @@
 
 **afetch** is a minimalist, animated 3D ASCII system information fetch tool for Linux and Unix terminals.
 
-It combines a real-time mathematical raymarching engine rendering a rotating 3D celestial planet with sleek hardware/system statistics, dynamic centering, and Truecolor theme harmony.
+It combines a real-time mathematical 3D raymarching/rendering engine with multiple selectable 3D animations (Globe, Saturn, Donut, Cube, Galaxy, DNA), sleek hardware statistics, dynamic screen centering, and ANSI Truecolor support.
 
 ```text
                                user@hostname
           =+###%               
-     .+:+*##@@@@@@@@=          OS       │ CachyOS x86_64
-   +=::+*=***%##%@%%%@%        Host     │ B550 AORUS ELITE V2
-  :+*=*+*=***%##%%%%%%%#       Kernel   │ Linux 7.1.8-1-cachyos
- +:+**##**##%%%%@@@@@@%#%      WM       │ driftwm (Wayland)
+     .+:+*##@@@@@@@@=          OS       │ Arch Linux x86_64
+   +=::+*=***%##%@%%%@%        Host     │ Workstation
+  :+*=*+*=***%##%%%%%%%#       Kernel   │ Linux 6.12.0
+ +:+**##**##%%%%@@@@@@%#%      WM       │ Hyprland / driftwm (Wayland)
 ·+=+*==*%===*#*########%%*     
-:+:+=+==#*#==#***%###%**%*     CPU      │ AMD Ryzen 5 5600G (12) @ 4.56 GHz
-+:::·+**###%%**#####*#%###     GPU      │ Radeon Vega Series
- :·:····=*=**#*+===#%#%#=      Memory   │ 7.28 GiB / 13.49 GiB (53%)
-  ...····++====*#**#**=:       Disk     │ 367.56 GiB / 461.76 GiB (79%)
+:+:+=+==#*#==#***%###%**%*     CPU      │ AMD Ryzen 7 (16) @ 4.80 GHz
++:::·+**###%%**#####*#%###     GPU      │ Dedicated GPU
+ :·:····=*=**#*+===#%#%#=      Memory   │ 6.42 GiB / 32.00 GiB (20%)
+  ...····++====*#**#**=:       Disk     │ 142.50 GiB / 1000.00 GiB (14%)
    .....::===*****==*·.        
-     ··.:.:::::::=:··          Packages │ 1605 (pacman)
-          ::::.·               Terminal │ kitty
+     ··.:.:::::::=:··          Packages │ 1250 (pacman)
+          ::::.·               Terminal │ kitty / alacritty
                                Colors   │ ● ● ● ● ● ● ●
+```
+
+---
+
+## 🪐 3D Animation Modes
+
+`afetch` features 6 distinct mathematical 3D ASCII rendering algorithms:
+
+### 1. `globe` / `planet` *(Default)*
+Raymarched 3D sphere with continental landmasses, latitude/longitude coordinate parallels, axial tilt, and specular reflection.
+
+```text
+              =+###%               
+         .+:+*##@@@@@@@@=          
+       +=::+*=***%##%@%%%@%        
+      :+*=*+*=***%##%%%%%%%#       
+     +:+**##**##%%%%@@@@@@%#%      
+    ·+=+*==*%===*#*########%%*     
+```
+
+### 2. `saturn`
+Raymarched 3D celestial planet surrounded by tilted elliptical orbital rings with Cassini division and planetary shadows.
+
+```text
+       ++:===++===***::==::        
+   ****++:+=***###%%%%%%=::+***    
+   *  *++:++====*****####::+  *    
+   **** ..··:::+++======== +***    
+   ***  ··::++===*********  ***    
+   **** +++++====******##* +***    
+```
+
+### 3. `donut` / `torus`
+Classic 3D mathematical torus rotating in dual axes with volumetric depth buffer and smooth illumination.
+
+```text
+           :+===***##              
+         ·::+++===***####          
+       .·::::::++:+==**###         
+      ..··:::::·:::++==**###       
+      ..·····.......·:+==*##=      
+      .···:··.     ...:+==***      
+```
+
+### 4. `cube`
+Rotating 3D solid and wireframe cube with perspective projection, shaded faces, and highlighted edges.
+
+```text
+             ######                
+         ##############            
+         #################         
+        ####################       
+        ###################        
+       ####################        
+```
+
+### 5. `galaxy` / `vortex`
+Rotating logarithmic spiral galaxy with accretion disk, star density gradients, and central black hole core.
+
+```text
+          . .... .. .. ..          
+         .. :::: : :··   .         
+        .. :      +  · ·  .        
+       . ::  ====++++++··· ..      
+      ·· : === *****  ++  · ..     
+      · :: =  ##  **   +  · .      
+   . ·   +===###%%#*=  +   ·  .    
+```
+
+### 6. `dna`
+Rotating 3D double helix genetic strand with connecting base-pair rungs and depth shading.
+
+```text
+             ══════●               
+             ●══════               
+        ●══ ═════════ ══●          
+       ● ════ ═════ ════ ●         
+           ●═════════●             
+               ●══                 
+         ●═════════════●           
 ```
 
 ---
 
 ## ✨ Features
 
-- **Smooth 3D Planetary Raymarching**: Computes continuous ray-sphere intersections per character cell. No jumping points, zero aliasing, and silky smooth continuous rotation at 35+ FPS.
-- **Dynamic Centering**: Automatically calculates terminal width and height (`shutil.get_terminal_size()`) and centers the entire card horizontally and vertically.
-- **Fast System Stats**: Fetches exact hardware and distribution information in <20ms using `fastfetch` JSON output with fallback.
-- **Truecolor Volumetric Shading**: Calculates light vectors, specular gleams, atmospheric midtones, and deep shadows matching the Matugen / Slate palette.
-- **Instant Non-Blocking Input**: Runs continuously in an interactive loop and instantly yields control to your shell upon pressing any key (`Enter`, `Space`, `q`, `Esc`) or `Ctrl+C`.
+- **Mathematical 3D Raymarching**: Computes continuous pixel-by-pixel surface intersections per character cell. Zero aliasing, zero jitter, and silky smooth 35+ FPS animation.
+- **Dynamic Terminal Centering**: Automatically calculates terminal width and height (`shutil.get_terminal_size()`) and centers the card both horizontally and vertically.
+- **Fast System Stats**: Fetches hardware and distribution information via `fastfetch` JSON (or standard library fallback) in <20ms.
+- **Truecolor Theme Harmony**: Volumetric lighting matching modern dark palettes with specular highlights, atmospheric midtones, and subtle shadows.
+- **Non-Blocking Keyboard Control**: Runs continuously in an interactive loop; press any key (`Space`, `Enter`, `q`, `Esc`) or `Ctrl+C` to instantly drop into your shell prompt.
 
 ---
 
 ## 📦 Requirements
 
-- **Python 3.10+** (standard library only — no pip dependencies required)
-- **fastfetch** (optional, recommended for hardware queries: `pacman -S fastfetch` / `paru -S fastfetch`)
-- A terminal with ANSI Truecolor support (Kitty, Alacritty, Ghostty, Foot, WezTerm, etc.)
-- A font with Nerd Font glyphs (for icons and clean lines)
+- **Python 3.10+** (Standard library only — zero pip dependencies)
+- **fastfetch** (Optional, recommended for hardware stats: `pacman -S fastfetch` / `apt install fastfetch` / `brew install fastfetch`)
+- Terminal supporting ANSI Truecolor (Kitty, Alacritty, Ghostty, Foot, WezTerm, etc.)
 
 ---
 
 ## 🚀 Installation
 
-### Fast Install:
 ```bash
 git clone https://github.com/ikittohk14-beep/afetch.git
 cd afetch
 ./install.sh
 ```
 
-Or manually copy `afetch` to your `~/.local/bin`:
+Or copy manually:
 ```bash
 mkdir -p ~/.local/bin
 cp afetch ~/.local/bin/afetch
 chmod +x ~/.local/bin/afetch
 ```
 
-Ensure `~/.local/bin` is in your `$PATH`.
+Make sure `~/.local/bin` is in your `$PATH`.
 
 ---
 
 ## 🛠️ Usage & Options
 
-### Continuous Interactive Mode (Default)
-Runs continuous 3D rotation in the center of the terminal. Press any key to stop and drop into the shell prompt.
 ```bash
+# Default mode (rotating 3D Globe):
 afetch
-```
 
-### Static Mode
-Outputs a single centered frame instantaneously (0ms delay), just like a traditional fastfetch:
-```bash
-afetch -s
+# Select a specific 3D animation mode:
+afetch -m saturn
+afetch -m donut
+afetch -m cube
+afetch -m galaxy
+afetch -m dna
+
+# Random animation mode on every launch:
+afetch -r
 # or
-afetch --static
-```
+afetch --random
 
-### Custom Frame Rate
-Change the animation speed / FPS (default is 35 FPS):
-```bash
+# Static mode (instant 0ms output, no animation):
+afetch -s
+afetch -s -m saturn
+
+# Custom FPS:
 afetch --fps 60
+
+# List all available modes:
+afetch --list-modes
 ```
 
 ---
@@ -92,7 +177,7 @@ afetch --fps 60
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    afetch
+    afetch -r # Pick a random 3D animation on start
 end
 
 alias fetch="afetch"
@@ -101,22 +186,10 @@ alias fetch="afetch"
 ### Bash (`~/.bashrc`) / Zsh (`~/.zshrc`)
 ```bash
 if [[ $- == *i* ]]; then
-    afetch
+    afetch -r
 fi
 
 alias fetch="afetch"
-```
-
----
-
-## 🎨 Palette Customization
-
-Colors are defined at the top of the `afetch` script in ANSI Truecolor format. You can edit them to match your desktop wallpaper or Matugen theme:
-
-```python
-COLOR_DIM = "\033[38;2;146;144;146m"     # #929092 (Key labels)
-COLOR_DIVIDER = "\033[38;2;71;70;72m"    # #474648 (Vertical bar │)
-COLOR_TEXT = "\033[38;2;229;226;227m"    # #e5e2e3 (Values)
 ```
 
 ---
