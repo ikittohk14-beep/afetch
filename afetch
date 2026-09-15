@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
 """afetch — Minimalist animated 3D ASCII system information fetch tool.
 
-Supports multiple selectable 3D ASCII animation modes:
-  • globe (default) — Raymarched rotating 3D planet with surface features
-  • saturn          — 3D planet with tilted elliptical planetary rings
-  • donut           — Classic 3D mathematical torus rotating in dual axes
-  • cube            — Shaded 3D rotating wireframe/solid cube
-  • galaxy          — Spiral galaxy / vortex with swirling star arms
-  • dna             — Rotating 3D double helix strand
+Supports multiple built-in 3D animation modes and custom user plugins/frames.
+  • globe   / planet   — Raymarched rotating 3D planet with surface features
+  • saturn             — 3D planet with tilted elliptical planetary rings
+  • donut   / torus    — Classic 3D mathematical torus rotating in dual axes
+  • cube               — Illuminated 3D wireframe and shaded rotating cube
+  • galaxy  / vortex   — Spiral galaxy with accretion core and swirling arms
+  • dna                — Rotating 3D double helix genetic strand
+  • cat     / neko     — Animated pixel cat with blinking eyes and swishing tail
+  • heart              — Pulsing 3D mathematical heart wireframe
+
+Custom modes can be placed in:
+  • ~/.config/afetch/modes/*.py   (Python render(angle) functions)
+  • ~/.config/afetch/frames/*.txt (Frame-by-frame ASCII animation files)
 
 MIT License © 2026 ikittohk14-beep
 """
 
 import argparse
 import atexit
+import importlib.util
 import json
 import math
 import os
+from pathlib import Path
 import platform
 import random
 import select
@@ -182,7 +190,7 @@ def fetch_system_info() -> dict:
     return data
 
 
-# ── 3D Mathematical Renderers ──────────────────────────────
+# ── Built-in 3D Mathematical Renderers ─────────────────────
 
 def render_globe(angle: float) -> list[str]:
     """3D Raymarched Planet with continuous surface rotation and lighting."""
@@ -239,13 +247,13 @@ def render_globe(angle: float) -> list[str]:
                 grid[py][px] = CHARS[int(lum * (len(CHARS) - 1))]
 
                 if lum > 0.82:
-                    colors[py][px] = "\033[38;2;245;244;248m"  # Gleam
+                    colors[py][px] = "\033[38;2;245;244;248m"
                 elif is_land:
-                    colors[py][px] = "\033[38;2;194;198;214m"  # Primary
+                    colors[py][px] = "\033[38;2;194;198;214m"
                 elif grid_line:
-                    colors[py][px] = "\033[38;2;133;154;234m"  # Parallels
+                    colors[py][px] = "\033[38;2;133;154;234m"
                 else:
-                    colors[py][px] = "\033[38;2;85;90;105m"    # Oceans
+                    colors[py][px] = "\033[38;2;85;90;105m"
 
     lines = []
     for row_c, row_ch in zip(colors, grid):
@@ -355,67 +363,104 @@ def render_donut(angle: float) -> list[str]:
 
 
 def render_cube(angle: float) -> list[str]:
-    """3D Solid and Wireframe Cube with illuminated faces and highlighted edges."""
+    """True 3D Wireframe and Shaded Rotating Cube with illuminated edges and vertices."""
     grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
     colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
     zbuf = [[-999.0 for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
-    A = angle * 0.8
-    B = angle * 0.6
-    C = angle * 0.4
-    cos_a, sin_a = math.cos(A), math.sin(A)
-    cos_b, sin_b = math.cos(B), math.sin(B)
-    cos_c, sin_c = math.cos(C), math.sin(C)
-    size = 3.6
-    step = 0.28
 
+    A = angle * 0.85
+    B = angle * 0.65
+    C = angle * 0.45
+    cx, cy = CANVAS_WIDTH / 2.0 - 0.5, CANVAS_HEIGHT / 2.0 - 0.5
+
+    s = 3.6
+    verts = [
+        [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
+        [-s, -s, s],  [s, -s, s],  [s, s, s],  [-s, s, s]
+    ]
+    edges = [
+        (0, 1), (1, 2), (2, 3), (3, 0),
+        (4, 5), (5, 6), (6, 7), (7, 4),
+        (0, 4), (1, 5), (2, 6), (3, 7)
+    ]
     faces = [
-        ((0, 0, 1), [(u, v, size) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
-        ((0, 0, -1), [(u, v, -size) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
-        ((0, 1, 0), [(u, size, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
-        ((0, -1, 0), [(u, -size, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
-        ((1, 0, 0), [(size, u, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
-        ((-1, 0, 0), [(-size, u, v) for u in [x * step for x in range(-12, 13)] for v in [y * step for y in range(-12, 13)]]),
+        ([0, 1, 2, 3], (0, 0, -1)),
+        ([4, 5, 6, 7], (0, 0, 1)),
+        ([0, 1, 5, 4], (0, -1, 0)),
+        ([2, 3, 7, 6], (0, 1, 0)),
+        ([0, 3, 7, 4], (-1, 0, 0)),
+        ([1, 2, 6, 5], (1, 0, 0))
     ]
 
-    for fn, pts in faces:
-        fnx = fn[0] * cos_c - fn[1] * sin_c
-        fny = fn[0] * sin_c + fn[1] * cos_c
+    rot_v = []
+    for x, y, z in verts:
+        x1 = x * math.cos(C) - y * math.sin(C)
+        y1 = x * math.sin(C) + y * math.cos(C)
+        z1 = z
+        x2 = x1 * math.cos(A) + z1 * math.sin(A)
+        z2 = -x1 * math.sin(A) + z1 * math.cos(A)
+        y2 = y1
+        y3 = y2 * math.cos(B) - z2 * math.sin(B)
+        z3 = y2 * math.sin(B) + z2 * math.cos(B)
+        rot_v.append((x2, y3, z3))
+
+    # Render illuminated face shading
+    for v_idx, fn in faces:
+        fnx = fn[0] * math.cos(C) - fn[1] * math.sin(C)
+        fny = fn[0] * math.sin(C) + fn[1] * math.cos(C)
         fnz = fn[2]
+        fx = fnx * math.cos(A) + fnz * math.sin(A)
+        fz = -fnx * math.sin(A) + fnz * math.cos(A)
+        fy = fny * math.cos(B) - fz * math.sin(B)
+        fz2 = fny * math.sin(B) + fz * math.cos(B)
 
-        fx = fnx * cos_a - fnz * sin_a
-        fz = fnx * sin_a + fnz * cos_a
+        if fz2 > 0.05:
+            diff = max(0.0, fx * LIGHT[0] + fy * LIGHT[1] + fz2 * LIGHT[2])
+            p0, p1, p2, p3 = rot_v[v_idx[0]], rot_v[v_idx[1]], rot_v[v_idx[2]], rot_v[v_idx[3]]
 
-        fy = fny * cos_b - fz * sin_b
-        fz = fny * sin_b + fz * cos_b
+            for u_i in range(1, 10):
+                u = u_i / 10.0
+                for v_i in range(1, 10):
+                    v = v_i / 10.0
+                    px_3d = (1 - u) * (1 - v) * p0[0] + u * (1 - v) * p1[0] + u * v * p2[0] + (1 - u) * v * p3[0]
+                    py_3d = (1 - u) * (1 - v) * p0[1] + u * (1 - v) * p1[1] + u * v * p2[1] + (1 - u) * v * p3[1]
+                    pz_3d = (1 - u) * (1 - v) * p0[2] + u * (1 - v) * p1[2] + u * v * p2[2] + (1 - u) * v * p3[2]
 
-        if fz > -0.05:
-            diff = max(0.0, fx * LIGHT[0] + fy * LIGHT[1] + fz * LIGHT[2])
-            for px_l, py_l, pz_l in pts:
-                x1 = px_l * cos_c - py_l * sin_c
-                y1 = px_l * sin_c + py_l * cos_c
-                z1 = pz_l
+                    scr_x = int(cx + px_3d * 1.9)
+                    scr_y = int(cy + py_3d)
+                    if 0 <= scr_x < CANVAS_WIDTH and 0 <= scr_y < CANVAS_HEIGHT:
+                        if pz_3d > zbuf[scr_y][scr_x]:
+                            zbuf[scr_y][scr_x] = pz_3d
+                            ch = " ·:+=*"[int(diff * 4)]
+                            grid[scr_y][scr_x] = ch
+                            colors[scr_y][scr_x] = "\033[38;2;85;90;105m" if diff < 0.5 else "\033[38;2;146;144;146m"
 
-                x2 = x1 * cos_a - z1 * sin_a
-                z2 = x1 * sin_a + z1 * cos_a
+    # Draw 3D wireframe edges
+    for i1, i2 in edges:
+        p1, p2 = rot_v[i1], rot_v[i2]
+        dist = math.hypot(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2])
+        steps = int(dist * 5.0) + 1
+        for s_i in range(steps + 1):
+            t = s_i / float(steps)
+            x_e = p1[0] + (p2[0] - p1[0]) * t
+            y_e = p1[1] + (p2[1] - p1[1]) * t
+            z_e = p1[2] + (p2[2] - p1[2]) * t
 
-                y3 = y1 * cos_b - z2 * sin_b
-                z3 = y1 * sin_b + z2 * cos_b
+            scr_x = int(cx + x_e * 1.9)
+            scr_y = int(cy + y_e)
+            if 0 <= scr_x < CANVAS_WIDTH and 0 <= scr_y < CANVAS_HEIGHT:
+                if z_e >= zbuf[scr_y][scr_x] - 0.2:
+                    zbuf[scr_y][scr_x] = z_e + 0.1
+                    grid[scr_y][scr_x] = "#"
+                    colors[scr_y][scr_x] = "\033[38;2;245;244;248m"
 
-                is_edge = (abs(abs(px_l) - size) < step * 0.6) or (abs(abs(py_l) - size) < step * 0.6) or (abs(abs(pz_l) - size) < step * 0.6)
-
-                px_s = int(CANVAS_WIDTH / 2.0 + x2 * 1.85)
-                py_s = int(CANVAS_HEIGHT / 2.0 + y3)
-
-                if 0 <= px_s < CANVAS_WIDTH and 0 <= py_s < CANVAS_HEIGHT:
-                    if z3 > zbuf[py_s][px_s]:
-                        zbuf[py_s][px_s] = z3
-                        lum = min(max(diff * 0.7 + (z3 + 5) / 12.0 * 0.3, 0.0), 1.0)
-                        if is_edge:
-                            grid[py_s][px_s] = "#"
-                            colors[py_s][px_s] = "\033[38;2;245;244;248m"
-                        else:
-                            grid[py_s][px_s] = CHARS[int(lum * (len(CHARS) - 1))]
-                            colors[py_s][px_s] = "\033[38;2;194;198;214m" if lum > 0.4 else "\033[38;2;85;90;105m"
+    # Draw highlighted vertices
+    for vx, vy, vz in rot_v:
+        scr_x = int(cx + vx * 1.9)
+        scr_y = int(cy + vy)
+        if 0 <= scr_x < CANVAS_WIDTH and 0 <= scr_y < CANVAS_HEIGHT:
+            grid[scr_y][scr_x] = "●"
+            colors[scr_y][scr_x] = "\033[38;2;255;180;171m"
 
     lines = []
     for row_c, row_ch in zip(colors, grid):
@@ -456,11 +501,11 @@ def render_galaxy(angle: float) -> list[str]:
                 ch = CHARS[min(max(idx, 1), len(CHARS) - 1)]
                 grid[py][px] = ch
                 if r < 3.0:
-                    colors[py][px] = "\033[38;2;245;244;248m"  # Core
+                    colors[py][px] = "\033[38;2;245;244;248m"
                 elif r < 6.5:
-                    colors[py][px] = "\033[38;2;133;154;234m"  # Arms
+                    colors[py][px] = "\033[38;2;133;154;234m"
                 else:
-                    colors[py][px] = "\033[38;2;192;198;220m"  # Dust
+                    colors[py][px] = "\033[38;2;192;198;220m"
 
     grid[int(cy)][int(cx)] = "●"
     colors[int(cy)][int(cx)] = "\033[38;2;255;180;171m"
@@ -509,7 +554,85 @@ def render_dna(angle: float) -> list[str]:
     return lines
 
 
-ANIMATION_MODES = {
+def render_cat(angle: float) -> list[str]:
+    """Animated Pixel Cat with blinking eyes, twitching ears, and swishing tail."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+
+    blink = (math.sin(angle * 1.5) > 0.85)
+    swish = math.sin(angle * 3.0)
+
+    eye = "^ . ^" if blink else "o . o"
+    tail1 = "   ) " if swish > 0.3 else ("  (  " if swish < -0.3 else "  |  ")
+    tail2 = "  (  " if swish > 0.3 else ("   ) " if swish < -0.3 else "  |  ")
+    tail3 = "   ~ " if swish > 0.3 else (" ~   " if swish < -0.3 else "  ~  ")
+
+    cat_lines = [
+        "",
+        "        |\\___/|        ",
+        f"       / {eye} \\       ",
+        "      (  = v =  )      ",
+        "       )       (       ",
+        f"      /         \\  {tail3.strip()}",
+        f"     (           ) {tail2.strip()}",
+        f"    ( (  |   |  ) ){tail1.strip()}",
+        "     (__d|___|b__)     ",
+        "",
+        "       \"ฅ(ﾐචᆽචﾐ)ฅ\"       ",
+        "",
+        "",
+        "",
+        ""
+    ]
+
+    for y, l in enumerate(cat_lines):
+        if y < CANVAS_HEIGHT:
+            for x, ch in enumerate(l):
+                if x < CANVAS_WIDTH:
+                    grid[y][x] = ch
+                    if ch in "o^":
+                        colors[y][x] = "\033[38;2;255;180;171m"  # Eyes
+                    elif ch in "v=":
+                        colors[y][x] = "\033[38;2;232;207;141m"  # Nose
+                    elif ch in "()|/\\_db~":
+                        colors[y][x] = "\033[38;2;194;198;214m"  # Body
+                    else:
+                        colors[y][x] = "\033[38;2;133;154;234m"  # Paws
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+def render_heart(angle: float) -> list[str]:
+    """Pulsing 3D Mathematical Wireframe Heart."""
+    grid = [[" " for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    colors = [["" for _ in range(CANVAS_WIDTH)] for _ in range(CANVAS_HEIGHT)]
+    pulse = 1.0 + 0.12 * math.sin(angle * 4.0)
+    cx, cy = CANVAS_WIDTH / 2.0 - 0.5, CANVAS_HEIGHT / 2.0 - 0.5
+
+    for py in range(CANVAS_HEIGHT):
+        y = -(py - cy) / (4.8 * pulse)
+        for px in range(CANVAS_WIDTH):
+            x = (px - cx) / (9.6 * pulse)
+            # 2D/3D heart implicit curve: (x^2 + y^2 - 1)^3 - x^2 * y^3 <= 0
+            val = (x * x + y * y - 1.0) ** 3 - (x * x) * (y * y * y)
+            if val <= 0.05:
+                edge = abs(val) < 0.15
+                grid[py][px] = "#" if edge else ("*" if abs(val) < 0.35 else "·")
+                if edge:
+                    colors[py][px] = "\033[38;2;255;180;171m"  # Bright heart coral
+                else:
+                    colors[py][px] = "\033[38;2;192;198;220m" if (px + py) % 2 == 0 else "\033[38;2;146;144;146m"
+
+    lines = []
+    for row_c, row_ch in zip(colors, grid):
+        lines.append("".join((c + ch) if ch != " " else " " for c, ch in zip(row_c, row_ch)) + COLOR_RESET)
+    return lines
+
+
+BUILTIN_MODES = {
     "globe": render_globe,
     "planet": render_globe,
     "saturn": render_saturn,
@@ -519,7 +642,62 @@ ANIMATION_MODES = {
     "galaxy": render_galaxy,
     "vortex": render_galaxy,
     "dna": render_dna,
+    "cat": render_cat,
+    "neko": render_cat,
+    "heart": render_heart,
 }
+
+
+# ── Custom Animation Discovery System ──────────────────────
+
+def discover_custom_modes() -> dict:
+    """Discover user-created animation modes from ~/.config/afetch/."""
+    custom = {}
+    config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch"
+
+    # 1. Python script plugins in ~/.config/afetch/modes/*.py
+    modes_dir = config_dir / "modes"
+    if modes_dir.is_dir():
+        for py_file in modes_dir.glob("*.py"):
+            try:
+                mod_name = py_file.stem
+                spec = importlib.util.spec_from_file_location(f"afetch_plugin_{mod_name}", str(py_file))
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "render"):
+                        custom[mod_name] = getattr(mod, "render")
+            except Exception as e:
+                pass
+
+    # 2. Text frame animations in ~/.config/afetch/frames/*.txt
+    frames_dir = config_dir / "frames"
+    if frames_dir.is_dir():
+        for txt_file in frames_dir.glob("*.txt"):
+            try:
+                anim_name = txt_file.stem
+                content = txt_file.read_text(encoding="utf-8")
+                raw_frames = [f.strip("\r\n").split("\n") for f in content.split("---") if f.strip()]
+                if raw_frames:
+                    def make_frame_renderer(frames_list):
+                        def frame_renderer(angle: float):
+                            f_idx = int(angle * 4.0) % len(frames_list)
+                            f_lines = frames_list[f_idx]
+                            # Pad/clip to CANVAS_HEIGHT
+                            out = []
+                            for i in range(CANVAS_HEIGHT):
+                                if i < len(f_lines):
+                                    line = f_lines[i]
+                                    out.append(line[:CANVAS_WIDTH].ljust(CANVAS_WIDTH))
+                                else:
+                                    out.append(" " * CANVAS_WIDTH)
+                            return out
+                        return frame_renderer
+                    custom[anim_name] = make_frame_renderer(raw_frames)
+            except Exception:
+                pass
+
+    return custom
 
 
 # ── Card Composition & Terminal Centering ───────────────────
@@ -612,14 +790,13 @@ def main():
         "--mode",
         type=str,
         default="globe",
-        choices=list(ANIMATION_MODES.keys()),
-        help="Animation preset to render (default: globe).",
+        help="Animation preset or custom mode name (default: globe).",
     )
     parser.add_argument(
         "-r",
         "--random",
         action="store_true",
-        help="Pick a random 3D animation mode on launch.",
+        help="Pick a random animation mode on launch.",
     )
     parser.add_argument(
         "-s",
@@ -636,25 +813,34 @@ def main():
     parser.add_argument(
         "--list-modes",
         action="store_true",
-        help="List all available animation presets and exit.",
+        help="List all available animation presets (built-in and custom) and exit.",
     )
     args = parser.parse_args()
 
+    custom_modes = discover_custom_modes()
+    all_modes = {**BUILTIN_MODES, **custom_modes}
+
     if args.list_modes:
-        print("Available 3D ASCII animation modes in afetch:")
-        print("  • globe   / planet  - 3D Rotating Planet with continental terrain")
+        print("Built-in animation modes in afetch:")
+        print("  • globe   / planet  - 3D Raymarched Planet with continental terrain")
         print("  • saturn            - 3D Planet with Tilted Orbital Rings")
         print("  • donut   / torus   - Classic Dual-Axis 3D Mathematical Torus")
-        print("  • cube              - Solid/Wireframe Rotating 3D Cube")
+        print("  • cube              - True 3D Wireframe and Shaded Rotating Cube")
         print("  • galaxy  / vortex  - Spiral Galaxy with Accretion Core")
         print("  • dna               - Rotating 3D Double Helix Strand")
+        print("  • cat     / neko    - Animated Pixel Cat with blinking eyes & swishing tail")
+        print("  • heart             - Pulsing 3D Mathematical Heart")
+        if custom_modes:
+            print("\nUser custom modes (~/.config/afetch/):")
+            for cm in sorted(custom_modes.keys()):
+                print(f"  • {cm}")
         return
 
     mode_name = args.mode.lower()
     if args.random:
-        mode_name = random.choice(["globe", "saturn", "donut", "cube", "galaxy", "dna"])
+        mode_name = random.choice(list(all_modes.keys()))
 
-    render_fn = ANIMATION_MODES.get(mode_name, render_globe)
+    render_fn = all_modes.get(mode_name, render_globe)
     info = fetch_system_info()
 
     if args.static:

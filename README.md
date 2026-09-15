@@ -2,7 +2,7 @@
 
 **afetch** is a minimalist, animated 3D ASCII system information fetch tool for Linux and Unix terminals.
 
-It combines a real-time mathematical 3D raymarching/rendering engine with multiple selectable 3D animations (Globe, Saturn, Donut, Cube, Galaxy, DNA), sleek hardware statistics, dynamic screen centering, and ANSI Truecolor support.
+It combines mathematical 3D raymarching/rendering engines with multiple selectable animation modes (Globe, Saturn, Donut, Cube, Galaxy, DNA, Cat, Heart), dynamic screen centering, hardware statistics, and an extensible custom animation plugin system.
 
 ```text
                                user@hostname
@@ -24,101 +24,179 @@ It combines a real-time mathematical 3D raymarching/rendering engine with multip
 
 ---
 
-## 🪐 3D Animation Modes
-
-`afetch` features 6 distinct mathematical 3D ASCII rendering algorithms:
+## 🪐 Built-in 3D Animation Modes
 
 ### 1. `globe` / `planet` *(Default)*
-Raymarched 3D sphere with continental landmasses, latitude/longitude coordinate parallels, axial tilt, and specular reflection.
-
+Raymarched 3D celestial sphere with continental terrain, coordinate parallels, axial tilt, and specular gleam.
 ```text
               =+###%               
          .+:+*##@@@@@@@@=          
        +=::+*=***%##%@%%%@%        
       :+*=*+*=***%##%%%%%%%#       
      +:+**##**##%%%%@@@@@@%#%      
-    ·+=+*==*%===*#*########%%*     
 ```
 
 ### 2. `saturn`
-Raymarched 3D celestial planet surrounded by tilted elliptical orbital rings with Cassini division and planetary shadows.
-
+3D planet surrounded by tilted elliptical planetary rings with Cassini division and casting shadows.
 ```text
        ++:===++===***::==::        
    ****++:+=***###%%%%%%=::+***    
    *  *++:++====*****####::+  *    
    **** ..··:::+++======== +***    
-   ***  ··::++===*********  ***    
-   **** +++++====******##* +***    
 ```
 
 ### 3. `donut` / `torus`
-Classic 3D mathematical torus rotating in dual axes with volumetric depth buffer and smooth illumination.
-
+Classic 3D mathematical torus rotating simultaneously in dual axes with volumetric depth buffer.
 ```text
            :+===***##              
          ·::+++===***####          
        .·::::::++:+==**###         
       ..··:::::·:::++==**###       
-      ..·····.......·:+==*##=      
-      .···:··.     ...:+==***      
 ```
 
 ### 4. `cube`
-Rotating 3D solid and wireframe cube with perspective projection, shaded faces, and highlighted edges.
-
+True 3D wireframe and shaded cube rotating in perspective space with highlighted vertices and illuminated faces.
 ```text
-             ######                
-         ##############            
-         #################         
-        ####################       
-        ###################        
-       ####################        
+                  #·#●             
+              ····##++#            
+          #····##●#++++#           
+       #·●·##### ##+++++#          
+      ######      ##+++++#         
 ```
 
 ### 5. `galaxy` / `vortex`
-Rotating logarithmic spiral galaxy with accretion disk, star density gradients, and central black hole core.
-
+3D spiral galaxy with swirling star arms, dust gradients, and a central gravitational accretion core.
 ```text
           . .... .. .. ..          
          .. :::: : :··   .         
         .. :      +  · ·  .        
        . ::  ====++++++··· ..      
-      ·· : === *****  ++  · ..     
-      · :: =  ##  **   +  · .      
-   . ·   +===###%%#*=  +   ·  .    
 ```
 
 ### 6. `dna`
-Rotating 3D double helix genetic strand with connecting base-pair rungs and depth shading.
-
+Rotating 3D double helix genetic strand with connecting nucleotide base-pair rungs.
 ```text
              ══════●               
              ●══════               
         ●══ ═════════ ══●          
        ● ════ ═════ ════ ●         
-           ●═════════●             
-               ●══                 
-         ●═════════════●           
+```
+
+### 7. `cat` / `neko`
+Animated pixel cat with blinking eyes, breathing motion, twitching ears, and swishing tail.
+```text
+           |\___/|                 
+          / ^ . ^ \                
+         (  = v =  )               
+          )       (                
+         /         \  ~            
+```
+
+### 8. `heart`
+Pulsing mathematical 3D wireframe heart curve.
+```text
+          ·*####*· ·*####*·        
+        *##########*#########*     
+        #####################      
+         *#################*       
+           *#############*         
 ```
 
 ---
 
-## ✨ Features
+## 🛠️ Usage & Flags
 
-- **Mathematical 3D Raymarching**: Computes continuous pixel-by-pixel surface intersections per character cell. Zero aliasing, zero jitter, and silky smooth 35+ FPS animation.
-- **Dynamic Terminal Centering**: Automatically calculates terminal width and height (`shutil.get_terminal_size()`) and centers the card both horizontally and vertically.
-- **Fast System Stats**: Fetches hardware and distribution information via `fastfetch` JSON (or standard library fallback) in <20ms.
-- **Truecolor Theme Harmony**: Volumetric lighting matching modern dark palettes with specular highlights, atmospheric midtones, and subtle shadows.
-- **Non-Blocking Keyboard Control**: Runs continuously in an interactive loop; press any key (`Space`, `Enter`, `q`, `Esc`) or `Ctrl+C` to instantly drop into your shell prompt.
+```bash
+# Default mode (rotating 3D Globe):
+afetch
+
+# Run a specific animation mode:
+afetch -m saturn
+afetch -m donut
+afetch -m cube
+afetch -m galaxy
+afetch -m dna
+afetch -m cat
+afetch -m heart
+
+# Pick a random animation every time:
+afetch -r
+# or
+afetch --random
+
+# Static mode (instant 0ms output without animation):
+afetch -s
+afetch -s -m cat
+
+# Set custom frame rate (default is 35 FPS):
+afetch --fps 60
+
+# List all available built-in and custom modes:
+afetch --list-modes
+```
 
 ---
 
-## 📦 Requirements
+## 🎨 How to Add Your Own Custom Animations
 
-- **Python 3.10+** (Standard library only — zero pip dependencies)
-- **fastfetch** (Optional, recommended for hardware stats: `pacman -S fastfetch` / `apt install fastfetch` / `brew install fastfetch`)
-- Terminal supporting ANSI Truecolor (Kitty, Alacritty, Ghostty, Foot, WezTerm, etc.)
+`afetch` includes an extensible custom plugin loader. You can add animations in two ways without modifying the source code:
+
+### Method 1: Custom Python Script (`~/.config/afetch/modes/*.py`)
+
+Create a Python file inside `~/.config/afetch/modes/`, e.g., `~/.config/afetch/modes/spinner.py`:
+
+```python
+import math
+
+def render(angle: float) -> list[str]:
+    """
+    Called every frame.
+    Must return a list of 15 strings (each max 28 characters wide).
+    ANSI truecolor escape codes are fully supported!
+    """
+    frame = int(angle * 6.0) % 4
+    spinners = ["|", "/", "-", "\\"]
+    char = spinners[frame]
+    
+    lines = [""] * 15
+    lines[7] = f"       >>> [ {char} ] <<<       "
+    return lines
+```
+
+Now run your custom animation:
+```bash
+afetch -m spinner
+```
+
+---
+
+### Method 2: Custom ASCII Frame File (`~/.config/afetch/frames/*.txt`)
+
+Create a text file with ASCII frames separated by `---` inside `~/.config/afetch/frames/`, e.g., `~/.config/afetch/frames/bird.txt`:
+
+```text
+       \           /
+        \  __v__  /
+         ( o   o )
+          \  =  /
+           `---'
+---
+       /           \
+      /   __v__     \
+     (   ( o   o )   )
+          \  =  /
+           `---'
+---
+      /---.___.---\
+          ( o.o )
+           \ = /
+            `-'
+```
+
+Now run your custom ASCII frame animation:
+```bash
+afetch -m bird
+```
 
 ---
 
@@ -137,38 +215,7 @@ cp afetch ~/.local/bin/afetch
 chmod +x ~/.local/bin/afetch
 ```
 
-Make sure `~/.local/bin` is in your `$PATH`.
-
----
-
-## 🛠️ Usage & Options
-
-```bash
-# Default mode (rotating 3D Globe):
-afetch
-
-# Select a specific 3D animation mode:
-afetch -m saturn
-afetch -m donut
-afetch -m cube
-afetch -m galaxy
-afetch -m dna
-
-# Random animation mode on every launch:
-afetch -r
-# or
-afetch --random
-
-# Static mode (instant 0ms output, no animation):
-afetch -s
-afetch -s -m saturn
-
-# Custom FPS:
-afetch --fps 60
-
-# List all available modes:
-afetch --list-modes
-```
+Ensure `~/.local/bin` is in your `$PATH`.
 
 ---
 
@@ -177,7 +224,7 @@ afetch --list-modes
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    afetch -r # Pick a random 3D animation on start
+    afetch -r # Random 3D animation on start
 end
 
 alias fetch="afetch"
