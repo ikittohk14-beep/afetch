@@ -1411,7 +1411,7 @@ def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
 def run_animated(info_lines: list[str], render_fn, fps: int = 35):
     """Run continuous 3D rotation with bulletproof resize and reflow protection."""
     global _cursor_hidden, _orig_termios, _clear_kitty_on_exit
-    _clear_kitty_on_exit = True
+    _clear_kitty_on_exit = False
 
     # Safety Guard: If input is already waiting in stdin (e.g. pasted commands or automated input),
     # immediately exit so we never consume or corrupt the user's input stream!
