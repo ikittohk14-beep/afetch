@@ -1119,7 +1119,7 @@ class GifRenderer:
 
 
 def resolve_gif_path(target: str | Path | None) -> Path | None:
-    """Resolve GIF file from path, name, or common user folders (~/.config/afetch/gifs, ~/Пикчи, ~/Pictures)."""
+    """Resolve GIF file from path, name, or common user folders (~/.config/afetch/gifs, ~/Pictures, ~/Downloads)."""
     if not target:
         return None
     p = Path(target).expanduser()
@@ -1133,12 +1133,12 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
     for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
         if candidate.is_file():
             return candidate
-    # Search common image folders (~/Пикчи/, ~/Pictures/, ~/Загрузки/, ~/Downloads/)
+    # Search common image folders (~/Pictures/, ~/Downloads/, ~/Пикчи/, ~/Загрузки/)
     for folder in [
-        Path.home() / "Пикчи",
         Path.home() / "Pictures",
-        Path.home() / "Загрузки",
         Path.home() / "Downloads",
+        Path.home() / "Пикчи",
+        Path.home() / "Загрузки",
     ]:
         if folder.is_dir():
             for candidate in [folder / target, folder / f"{target}.gif"]:

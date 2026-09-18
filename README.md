@@ -42,9 +42,7 @@
   * `quad`: Subpixel 2×2 quadrants (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) providing double horizontal detail (56×30 dots) with native terminal alpha transparency.
   * `kitty`: Pure HD native pixel graphics directly rendered on the GPU.
   * `ascii`: 10-level grayscale monochrome ASCII art.
-* 🛡️ **Interactive Terminal Safety:** Automatically detects genuine interactive TTYs. Never hangs scripts, never swallows pasted input, and preserves dismiss keystrokes for your shell.
-* 🔍 **Smart Path & Name Resolution:** Run `afetch meowpin`, `afetch cat`, or `afetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
-* 🎨 **Custom Plugin Architecture:** Create your own modes using Python scripts (`~/.config/afetch/modes/*.py`) or plain text ASCII frames (`~/.config/afetch/frames/*.txt`).
+* 🔍 **Smart Path & Name Resolution:** Run `afetch cat.gif` or `afetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/.config/afetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
 
 ---
 
@@ -209,23 +207,22 @@ afetch -r
 ```
 
 ### GIF Animations
-`afetch` will search for GIF files in your current directory, `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
+`afetch` will search for GIF files in your current directory, `~/.config/afetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
 
 ```bash
 # Play a GIF by name or path:
-afetch meowpin
 afetch cat.gif
-afetch ~/Пикчи/animation.gif
+afetch ~/Pictures/cat.gif
 
 # Choose rendering engine:
-afetch meowpin --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
-afetch meowpin quad                    # Subpixel 2x2 quadrants (double detail)
-afetch meowpin blocks                  # Sharp Truecolor half-blocks (default)
-afetch meowpin ascii                   # Retro monochrome ASCII
+afetch cat.gif --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
+afetch cat.gif quad                    # Subpixel 2x2 quadrants (double detail)
+afetch cat.gif blocks                  # Sharp Truecolor half-blocks (default)
+afetch cat.gif ascii                   # Retro monochrome ASCII
 
 # Static display mode (instant output without animation, like neofetch):
-afetch meowpin --static
-afetch meowpin --kitty --static
+afetch cat.gif --static
+afetch cat.gif --kitty --static
 afetch -s
 ```
 
@@ -315,14 +312,14 @@ afetch bird
 
 ### Method 3: Custom GIFs (`~/.config/afetch/gifs/*.gif`)
 
-Simply drop any `.gif` into `~/.config/afetch/gifs/` or `~/Пикчи/`:
+Simply drop any `.gif` into `~/.config/afetch/gifs/` or `~/Pictures/`:
 
 ```bash
 mkdir -p ~/.config/afetch/gifs
-cp myanimation.gif ~/.config/afetch/gifs/
+cp cat.gif ~/.config/afetch/gifs/
 
-afetch myanimation
-afetch myanimation --kitty
+afetch cat.gif
+afetch cat.gif --kitty
 ```
 
 ---

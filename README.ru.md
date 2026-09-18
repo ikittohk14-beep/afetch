@@ -42,9 +42,7 @@
   * `quad`: Субпиксельные квадранты 2×2 (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) с удвоенной горизонтальной детализацией (56×30 точек) и прозрачностью фона.
   * `kitty`: Нативное HD-качество оригинальных пикселей через графический протокол Kitty.
   * `ascii`: Классический 10-градационный монохромный ASCII-арт.
-* 🛡️ **Защита терминала и безопасность ввода:** Утилита распознаёт реальный интерактивный TTY. Никогда не зависает в скриптах, не проглатывает вставленный текст (paste buffer) и бережно сохраняет нажатую клавишу выхода для командной оболочки.
-* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `afetch meowpin`, `afetch cat`, `afetch ~/Пикчи/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/` и `~/Загрузки/`.
-* 🎨 **Модульная система плагинов:** Добавляйте собственные анимации на чистом Python (`~/.config/afetch/modes/*.py`) или текстовых кадрах ASCII (`~/.config/afetch/frames/*.txt`).
+* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `afetch cat.gif` или `afetch ~/Pictures/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/.config/afetch/gifs/`, `~/Pictures/` и `~/Downloads/`.
 
 ---
 
@@ -209,23 +207,22 @@ afetch -r
 ```
 
 ### Воспроизведение GIF-анимаций
-`afetch` автоматически ищет файлы в текущей директории, `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/` или `~/Загрузки/`:
+`afetch` автоматически ищет файлы в текущей директории, `~/.config/afetch/gifs/`, `~/Pictures/` или `~/Downloads/`:
 
 ```bash
 # Запуск гифки по имени или пути:
-afetch meowpin
 afetch cat.gif
-afetch ~/Пикчи/animation.gif
+afetch ~/Pictures/cat.gif
 
 # Выбор движка отрисовки:
-afetch meowpin --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
-afetch meowpin quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
-afetch meowpin blocks                  # Сочные Truecolor полублоки (по умолчанию)
-afetch meowpin ascii                   # Ретро-стиль символами ASCII
+afetch cat.gif --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
+afetch cat.gif quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
+afetch cat.gif blocks                  # Сочные Truecolor полублоки (по умолчанию)
+afetch cat.gif ascii                   # Ретро-стиль символами ASCII
 
 # Статический режим (моментальный вывод одного кадра без анимации, как neofetch):
-afetch meowpin --static
-afetch meowpin --kitty --static
+afetch cat.gif --static
+afetch cat.gif --kitty --static
 afetch -s
 ```
 
@@ -315,14 +312,14 @@ afetch bird
 
 ### Способ 3: Добавление GIF-анимаций (`~/.config/afetch/gifs/*.gif`)
 
-Просто скопируйте любой `.gif` в `~/.config/afetch/gifs/` или в вашу папку `~/Пикчи/`:
+Просто скопируйте любой `.gif` в `~/.config/afetch/gifs/` или в вашу папку `~/Pictures/`:
 
 ```bash
 mkdir -p ~/.config/afetch/gifs
-cp mycat.gif ~/.config/afetch/gifs/
+cp cat.gif ~/.config/afetch/gifs/
 
-afetch mycat
-afetch mycat --kitty
+afetch cat.gif
+afetch cat.gif --kitty
 ```
 
 ---
