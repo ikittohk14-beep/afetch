@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 afetch
+# 🌐 anifetch
 
 **Минималистичная анимированная системная утилита с 3D ASCII-графикой и поддержкой GIF для терминалов Linux и Unix.**
 
@@ -10,7 +10,7 @@
 
 ---
 
-**afetch** — это быстрый, стильный и лёгкий CLI-инструмент для вывода информации о системе. Он сочетает математические движки 3D-реймарчинга, воспроизведение анимированных GIF с аппаратным ускорением на GPU, интеллектуальную защиту интерактивного терминала, динамическое центрирование и расширяемую систему пользовательских анимаций.
+**anifetch** — это быстрый, стильный и лёгкий CLI-инструмент для вывода информации о системе. Он сочетает математические движки 3D-реймарчинга, воспроизведение анимированных GIF с аппаратным ускорением на GPU, интеллектуальную защиту интерактивного терминала, динамическое центрирование и расширяемую систему пользовательских анимаций.
 
 ```text
                                 user@hostname
@@ -42,7 +42,7 @@
   * `quad`: Субпиксельные квадранты 2×2 (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) с удвоенной горизонтальной детализацией (56×30 точек) и прозрачностью фона.
   * `kitty`: Нативное HD-качество оригинальных пикселей через графический протокол Kitty.
   * `ascii`: Классический 10-градационный монохромный ASCII-арт.
-* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `afetch cat.gif` или `afetch ~/Pictures/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/.config/afetch/gifs/`, `~/Pictures/` и `~/Downloads/`.
+* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `anifetch cat.gif` или `anifetch ~/Pictures/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/.config/anifetch/gifs/`, `~/Pictures/` и `~/Downloads/`.
 
 ---
 
@@ -191,44 +191,44 @@
 ### Базовые команды
 ```bash
 # Стандартный запуск (вращающаяся 3D-Земля):
-afetch
+anifetch
 
 # Запуск любого режима по имени:
-afetch saturn
-afetch donut
-afetch cube
-afetch galaxy
-afetch dna
-afetch cat
-afetch heart
+anifetch saturn
+anifetch donut
+anifetch cube
+anifetch galaxy
+anifetch dna
+anifetch cat
+anifetch heart
 
 # Случайный режим при каждом запуске:
-afetch -r
+anifetch -r
 ```
 
 ### Воспроизведение GIF-анимаций
-`afetch` автоматически ищет файлы в текущей директории, `~/.config/afetch/gifs/`, `~/Pictures/` или `~/Downloads/`:
+`anifetch` автоматически ищет файлы в текущей директории, `~/.config/anifetch/gifs/`, `~/Pictures/` или `~/Downloads/`:
 
 ```bash
 # Запуск гифки по имени или пути:
-afetch cat.gif
-afetch ~/Pictures/cat.gif
+anifetch cat.gif
+anifetch ~/Pictures/cat.gif
 
 # Выбор движка отрисовки:
-afetch cat.gif --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
-afetch cat.gif quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
-afetch cat.gif blocks                  # Сочные Truecolor полублоки (по умолчанию)
-afetch cat.gif ascii                   # Ретро-стиль символами ASCII
+anifetch cat.gif --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
+anifetch cat.gif quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
+anifetch cat.gif blocks                  # Сочные Truecolor полублоки (по умолчанию)
+anifetch cat.gif ascii                   # Ретро-стиль символами ASCII
 
 # Статический режим (моментальный вывод одного кадра без анимации, как neofetch):
-afetch cat.gif --static
-afetch cat.gif --kitty --static
-afetch -s
+anifetch cat.gif --static
+anifetch cat.gif --kitty --static
+anifetch -s
 ```
 
 ### Опции и флаги
 ```bash
-afetch [цель] [стиль] [опции]
+anifetch [цель] [стиль] [опции]
 
 Позиционные аргументы:
   цель                  Имя встроенного режима или имя/путь к файлу .gif.
@@ -251,11 +251,11 @@ afetch [цель] [стиль] [опции]
 
 ## 🎨 Создание собственных анимаций
 
-В `afetch` встроена модульная система плагинов, позволяющая добавлять свои пресеты без правок исходного кода:
+В `anifetch` встроена модульная система плагинов, позволяющая добавлять свои пресеты без правок исходного кода:
 
-### Способ 1: Скрипт на Python (`~/.config/afetch/modes/*.py`)
+### Способ 1: Скрипт на Python (`~/.config/anifetch/modes/*.py`)
 
-Создайте файл Python в каталоге `~/.config/afetch/modes/`, например `~/.config/afetch/modes/spinner.py`:
+Создайте файл Python в каталоге `~/.config/anifetch/modes/`, например `~/.config/anifetch/modes/spinner.py`:
 
 ```python
 def render(angle: float) -> list[str]:
@@ -275,14 +275,14 @@ def render(angle: float) -> list[str]:
 
 Запуск:
 ```bash
-afetch spinner
+anifetch spinner
 ```
 
 ---
 
-### Способ 2: Текстовые ASCII-кадры (`~/.config/afetch/frames/*.txt`)
+### Способ 2: Текстовые ASCII-кадры (`~/.config/anifetch/frames/*.txt`)
 
-Создайте текстовый файл с кадрами, разделёнными строкой `---`, например `~/.config/afetch/frames/bird.txt`:
+Создайте текстовый файл с кадрами, разделёнными строкой `---`, например `~/.config/anifetch/frames/bird.txt`:
 
 ```text
        \           /
@@ -305,33 +305,33 @@ afetch spinner
 
 Запуск:
 ```bash
-afetch bird
+anifetch bird
 ```
 
 ---
 
-### Способ 3: Добавление GIF-анимаций (`~/.config/afetch/gifs/*.gif`)
+### Способ 3: Добавление GIF-анимаций (`~/.config/anifetch/gifs/*.gif`)
 
-Просто скопируйте любой `.gif` в `~/.config/afetch/gifs/` или в вашу папку `~/Pictures/`:
+Просто скопируйте любой `.gif` в `~/.config/anifetch/gifs/` или в вашу папку `~/Pictures/`:
 
 ```bash
-mkdir -p ~/.config/afetch/gifs
-cp cat.gif ~/.config/afetch/gifs/
+mkdir -p ~/.config/anifetch/gifs
+cp cat.gif ~/.config/anifetch/gifs/
 
-afetch cat.gif
-afetch cat.gif --kitty
+anifetch cat.gif
+anifetch cat.gif --kitty
 ```
 
 ---
 
 ## 🛡️ Безопасность терминала и защита ввода
 
-`afetch` спроектирован так, чтобы не нарушать работу рабочего окружения:
+`anifetch` спроектирован так, чтобы не нарушать работу рабочего окружения:
 
-* **Защита неинтерактивного TTY:** При вызове внутри конвейеров (pipes), скриптов сборки, фоновых процессов или субшеллах без TTY `afetch` моментально и тихо завершается с кодом 0, предотвращая зависание `git`, `ssh`, `rsync` или терминалов IDE.
-* **Защита вставки команд (Paste Guard):** Если в `stdin` уже есть буферизованные символы (например, при автозаполнении или быстрой вставке текста при открытии терминала), `afetch` мгновенно завершается, не проглатывая и не искажая пользовательский ввод.
+* **Защита неинтерактивного TTY:** При вызове внутри конвейеров (pipes), скриптов сборки, фоновых процессов или субшеллах без TTY `anifetch` моментально и тихо завершается с кодом 0, предотвращая зависание `git`, `ssh`, `rsync` или терминалов IDE.
+* **Защита вставки команд (Paste Guard):** Если в `stdin` уже есть буферизованные символы (например, при автозаполнении или быстрой вставке текста при открытии терминала), `anifetch` мгновенно завершается, не проглатывая и не искажая пользовательский ввод.
 * **Сохранение клавиши выхода:** При нажатии любой клавиши для выхода из анимации символ не считывается впустую, а остаётся в буфере терминала и передаётся командной оболочке.
-* **Диагностика:** Команда `afetch --check-terminal` позволяет проверить готовность окружения.
+* **Диагностика:** Команда `anifetch --check-terminal` позволяет проверить готовность окружения.
 
 ---
 
@@ -339,16 +339,18 @@ afetch cat.gif --kitty
 
 ### Через установочный скрипт
 ```bash
-git clone https://github.com/ikittohk14-beep/afetch.git
-cd afetch
+git clone https://github.com/ikittohk14-beep/anifetch.git
+cd anifetch
 ./install.sh
 ```
+*(Скрипт также автоматически создаёт симлинк `afetch` для обратной совместимости).*
 
 ### Вручную
 ```bash
 mkdir -p ~/.local/bin
-cp afetch ~/.local/bin/afetch
-chmod +x ~/.local/bin/afetch
+cp anifetch ~/.local/bin/anifetch
+chmod +x ~/.local/bin/anifetch
+ln -sf ~/.local/bin/anifetch ~/.local/bin/afetch
 ```
 
 Убедитесь, что директория `~/.local/bin` добавлена в переменную `$PATH`.
@@ -374,19 +376,19 @@ chmod +x ~/.local/bin/afetch
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    afetch -r # Случайная 3D-анимация при открытии вкладки
+    anifetch -r # Случайная 3D-анимация при открытии вкладки
 end
 
-alias fetch="afetch"
+alias fetch="anifetch"
 ```
 
 ### Bash (`~/.bashrc`) / Zsh (`~/.zshrc`)
 ```bash
 if [[ $- == *i* ]]; then
-    afetch -r
+    anifetch -r
 fi
 
-alias fetch="afetch"
+alias fetch="anifetch"
 ```
 
 ---

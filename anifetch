@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""afetch — Minimalist animated 3D ASCII system information fetch tool.
+"""anifetch — Minimalist animated 3D ASCII & GIF system information fetch tool.
 
 Supports multiple built-in 3D animation modes and custom user plugins/frames.
   • globe   / planet   — Raymarched rotating 3D planet with surface features
@@ -12,8 +12,9 @@ Supports multiple built-in 3D animation modes and custom user plugins/frames.
   • heart              — Pulsing 3D mathematical heart wireframe
 
 Custom modes can be placed in:
-  • ~/.config/afetch/modes/*.py   (Python render(angle) functions)
-  • ~/.config/afetch/frames/*.txt (Frame-by-frame ASCII animation files)
+  • ~/.config/anifetch/modes/*.py   (Python render(angle) functions)
+  • ~/.config/anifetch/frames/*.txt (Frame-by-frame ASCII animation files)
+  • ~/.config/anifetch/gifs/*.gif   (GIF animations)
 
 MIT License © 2026 ikittohk14-beep
 """
@@ -49,11 +50,11 @@ except ImportError:
 # ── Terminal Detection & Safety Helpers ───────────────────────
 
 def is_real_interactive_terminal() -> bool:
-    """Detect whether afetch is running inside a genuine interactive user terminal.
+    """Detect whether anifetch is running inside a genuine interactive user terminal.
 
     Returns False if running in a non-interactive subshell, script, pipe, CI,
     background runner, or dumb terminal, preventing hangs, swallowed keystrokes,
-    and corrupted terminal buffers.
+    and corrupted terminal output.
     """
     # 1. Both stdin and stdout must be real TTYs
     try:
@@ -1119,7 +1120,7 @@ class GifRenderer:
 
 
 def resolve_gif_path(target: str | Path | None) -> Path | None:
-    """Resolve GIF file from path, name, or common user folders (~/.config/afetch/gifs, ~/Pictures, ~/Downloads)."""
+    """Resolve GIF file from path, name, or common user folders (~/.config/anifetch/gifs, ~/Pictures, ~/Downloads)."""
     if not target:
         return None
     p = Path(target).expanduser()
@@ -1128,11 +1129,15 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
     p_gif = Path(str(target) + ".gif").expanduser()
     if p_gif.is_file():
         return p_gif
-    # Search ~/.config/afetch/gifs/
-    cfg_gifs = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch" / "gifs"
-    for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
-        if candidate.is_file():
-            return candidate
+
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    # Search ~/.config/anifetch/gifs/ and ~/.config/afetch/gifs/
+    for config_name in ["anifetch", "afetch"]:
+        cfg_gifs = xdg_config / config_name / "gifs"
+        for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
+            if candidate.is_file():
+                return candidate
+
     # Search common image folders (~/Pictures/, ~/Downloads/, ~/Пикчи/, ~/Загрузки/)
     for folder in [
         Path.home() / "Pictures",
@@ -1150,70 +1155,81 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
 # ── Custom Animation Discovery System ──────────────────────
 
 def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> dict:
-    """Discover user-created animation modes and GIFs from ~/.config/afetch/."""
+    """Discover user-created animation modes and GIFs from ~/.config/anifetch/."""
     custom = {}
-    config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch"
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 
-    # 1. Python script plugins in ~/.config/afetch/modes/*.py
-    modes_dir = config_dir / "modes"
-    if modes_dir.is_dir():
-        for py_file in modes_dir.glob("*.py"):
-            try:
-                mod_name = py_file.stem
-                spec = importlib.util.spec_from_file_location(f"afetch_plugin_{mod_name}", str(py_file))
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    if hasattr(mod, "render"):
-                        custom[mod_name] = getattr(mod, "render")
-            except Exception:
-                pass
+    for config_name in ["anifetch", "afetch"]:
+        config_dir = xdg_config / config_name
+        if not config_dir.is_dir():
+            continue
 
-    # 2. Text frame animations in ~/.config/afetch/frames/*.txt
-    frames_dir = config_dir / "frames"
-    if frames_dir.is_dir():
-        for txt_file in frames_dir.glob("*.txt"):
-            try:
-                anim_name = txt_file.stem
-                content = txt_file.read_text(encoding="utf-8")
-                raw_frames = [f.strip("\r\n").split("\n") for f in content.split("---") if f.strip()]
-                if raw_frames:
-                    def make_frame_renderer(frames_list):
-                        def frame_renderer(angle: float):
-                            f_idx = int(angle * 4.0) % len(frames_list)
-                            f_lines = frames_list[f_idx]
-                            out = []
-                            for i in range(CANVAS_HEIGHT):
-                                if i < len(f_lines):
-                                    line = f_lines[i]
-                                    out.append(line[:CANVAS_WIDTH].ljust(CANVAS_WIDTH))
-                                else:
-                                    out.append(" " * CANVAS_WIDTH)
-                            return out
-                        return frame_renderer
-                    custom[anim_name] = make_frame_renderer(raw_frames)
-            except Exception:
-                pass
+        # 1. Python script plugins in modes/*.py
+        modes_dir = config_dir / "modes"
+        if modes_dir.is_dir():
+            for py_file in modes_dir.glob("*.py"):
+                try:
+                    mod_name = py_file.stem
+                    if mod_name in custom:
+                        continue
+                    spec = importlib.util.spec_from_file_location(f"anifetch_plugin_{mod_name}", str(py_file))
+                    if spec and spec.loader:
+                        mod = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(mod)
+                        if hasattr(mod, "render"):
+                            custom[mod_name] = getattr(mod, "render")
+                except Exception:
+                    pass
 
-    # 3. User GIF animations in ~/.config/afetch/gifs/*.gif
-    gifs_dir = config_dir / "gifs"
-    if gifs_dir.is_dir() and HAS_PIL:
-        for gif_file in gifs_dir.glob("*.gif"):
-            try:
-                anim_name = gif_file.stem
-                def make_gif_renderer(gpath, gstyle, gstatic):
-                    _cached = None
-                    def _renderer(angle: float = 0.0):
-                        nonlocal _cached
-                        if _cached is None:
-                            _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle, static=gstatic)
-                        return _cached(angle)
-                    return _renderer
-                renderer_fn = make_gif_renderer(gif_file, gif_style, static)
-                custom[anim_name] = renderer_fn
-                custom[gif_file.name] = renderer_fn
-            except Exception:
-                pass
+        # 2. Text frame animations in frames/*.txt
+        frames_dir = config_dir / "frames"
+        if frames_dir.is_dir():
+            for txt_file in frames_dir.glob("*.txt"):
+                try:
+                    anim_name = txt_file.stem
+                    if anim_name in custom:
+                        continue
+                    content = txt_file.read_text(encoding="utf-8")
+                    raw_frames = [f.strip("\r\n").split("\n") for f in content.split("---") if f.strip()]
+                    if raw_frames:
+                        def make_frame_renderer(frames_list):
+                            def frame_renderer(angle: float):
+                                f_idx = int(angle * 4.0) % len(frames_list)
+                                f_lines = frames_list[f_idx]
+                                out = []
+                                for i in range(CANVAS_HEIGHT):
+                                    if i < len(f_lines):
+                                        line = f_lines[i]
+                                        out.append(line[:CANVAS_WIDTH].ljust(CANVAS_WIDTH))
+                                    else:
+                                        out.append(" " * CANVAS_WIDTH)
+                                return out
+                            return frame_renderer
+                        custom[anim_name] = make_frame_renderer(raw_frames)
+                except Exception:
+                    pass
+
+        # 3. User GIF animations in gifs/*.gif
+        gifs_dir = config_dir / "gifs"
+        if gifs_dir.is_dir() and HAS_PIL:
+            for gif_file in gifs_dir.glob("*.gif"):
+                try:
+                    anim_name = gif_file.stem
+                    if anim_name in custom:
+                        continue
+                    def make_gif_renderer(gpath, gstyle, gstatic):
+                        _cached = None
+                        def _renderer(angle: float = 0.0):
+                            nonlocal _cached
+                            if _cached is None:
+                                _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle, static=gstatic)
+                            return _cached(angle)
+                        return _renderer
+                    renderer_fn = make_gif_renderer(gif_file, gif_style, static)
+                    custom[anim_name] = renderer_fn
+                    custom[gif_file.name] = renderer_fn
+                except Exception:
+                    pass
 
     return custom
 
@@ -1319,7 +1335,7 @@ def run_animated(info: dict, render_fn, fps: int = 35):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="afetch — Minimalist animated 3D ASCII and GIF system information fetch."
+        description="anifetch — Minimalist animated 3D ASCII and GIF system information fetch."
     )
     parser.add_argument(
         "target",
@@ -1404,7 +1420,7 @@ def main():
     # Diagnostic flag
     if args.check_terminal:
         diag = get_terminal_diagnostics()
-        print("afetch Terminal Diagnostics:")
+        print("anifetch Terminal Diagnostics:")
         print(f"  • Real Interactive TTY : {'YES' if diag['real_interactive_tty'] else 'NO'}")
         print(f"  • stdin isatty         : {diag['stdin_isatty']}")
         print(f"  • stdout isatty        : {diag['stdout_isatty']}")
@@ -1418,7 +1434,7 @@ def main():
     all_modes = {**BUILTIN_MODES, **custom_modes}
 
     if args.list_modes:
-        print("Built-in 3D animation modes in afetch:")
+        print("Built-in 3D animation modes in anifetch:")
         print("  • globe   / planet  - 3D Raymarched Planet with continental terrain")
         print("  • saturn            - 3D Planet with Tilted Orbital Rings")
         print("  • donut   / torus   - Classic Dual-Axis 3D Mathematical Torus")
@@ -1428,7 +1444,7 @@ def main():
         print("  • cat     / neko    - Animated Pixel Cat with blinking eyes & swishing tail")
         print("  • heart             - Pulsing 3D Mathematical Heart")
         if custom_modes:
-            print("\nUser custom modes & GIFs (~/.config/afetch/):")
+            print("\nUser custom modes & GIFs (~/.config/anifetch/):")
             for cm in sorted(custom_modes.keys()):
                 print(f"  • {cm}")
         return
@@ -1440,12 +1456,12 @@ def main():
     if args.gif:
         gif_file = resolve_gif_path(args.gif)
         if not gif_file:
-            print(f"afetch: GIF file not found: {args.gif}", file=sys.stderr)
+            print(f"anifetch: GIF file not found: {args.gif}", file=sys.stderr)
             sys.exit(1)
     else:
         target_cand = args.target or args.mode
         if target_cand:
-            # Handle if style was passed as first positional (e.g. afetch kitty)
+            # Handle if style was passed as first positional (e.g. anifetch kitty)
             if target_cand in ["blocks", "quad", "kitty", "ascii"]:
                 args.gif_style = target_cand
                 target_cand = args.mode or "globe"
@@ -1481,7 +1497,7 @@ def main():
         return
 
     # ── Real Terminal Safety Guard for Animation ─────────────────
-    # If afetch is launched in a non-interactive shell (automated tool execution,
+    # If anifetch is launched in a non-interactive shell (automated tool execution,
     # IDE subtasks, scp/git hooks, or background pipes), avoid hanging or breaking stdin:
     if not args.force_terminal and not is_real_interactive_terminal():
         sys.exit(0)

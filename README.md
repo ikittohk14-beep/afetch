@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 afetch
+# 🌐 anifetch
 
 **Minimalist, animated 3D ASCII & GIF system information fetch for Linux and Unix terminals.**
 
@@ -10,7 +10,7 @@
 
 ---
 
-**afetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
+**anifetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
 
 ```text
                                 user@hostname
@@ -42,7 +42,7 @@
   * `quad`: Subpixel 2×2 quadrants (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) providing double horizontal detail (56×30 dots) with native terminal alpha transparency.
   * `kitty`: Pure HD native pixel graphics directly rendered on the GPU.
   * `ascii`: 10-level grayscale monochrome ASCII art.
-* 🔍 **Smart Path & Name Resolution:** Run `afetch cat.gif` or `afetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/.config/afetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
+* 🔍 **Smart Path & Name Resolution:** Run `anifetch cat.gif` or `anifetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/.config/anifetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
 
 ---
 
@@ -191,44 +191,44 @@ Pulsing mathematical 3D wireframe heart curve.
 ### Basic Usage
 ```bash
 # Default mode (rotating 3D Globe):
-afetch
+anifetch
 
 # Run any built-in 3D mode by name:
-afetch saturn
-afetch donut
-afetch cube
-afetch galaxy
-afetch dna
-afetch cat
-afetch heart
+anifetch saturn
+anifetch donut
+anifetch cube
+anifetch galaxy
+anifetch dna
+anifetch cat
+anifetch heart
 
 # Pick a random 3D animation mode on launch:
-afetch -r
+anifetch -r
 ```
 
 ### GIF Animations
-`afetch` will search for GIF files in your current directory, `~/.config/afetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
+`anifetch` will search for GIF files in your current directory, `~/.config/anifetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
 
 ```bash
 # Play a GIF by name or path:
-afetch cat.gif
-afetch ~/Pictures/cat.gif
+anifetch cat.gif
+anifetch ~/Pictures/cat.gif
 
 # Choose rendering engine:
-afetch cat.gif --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
-afetch cat.gif quad                    # Subpixel 2x2 quadrants (double detail)
-afetch cat.gif blocks                  # Sharp Truecolor half-blocks (default)
-afetch cat.gif ascii                   # Retro monochrome ASCII
+anifetch cat.gif --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
+anifetch cat.gif quad                    # Subpixel 2x2 quadrants (double detail)
+anifetch cat.gif blocks                  # Sharp Truecolor half-blocks (default)
+anifetch cat.gif ascii                   # Retro monochrome ASCII
 
 # Static display mode (instant output without animation, like neofetch):
-afetch cat.gif --static
-afetch cat.gif --kitty --static
-afetch -s
+anifetch cat.gif --static
+anifetch cat.gif --kitty --static
+anifetch -s
 ```
 
 ### Options & Flags
 ```bash
-afetch [target] [style] [options]
+anifetch [target] [style] [options]
 
 Positionals:
   target                Animation mode name, preset, or path/name of a .gif file.
@@ -251,11 +251,11 @@ Options:
 
 ## 🎨 How to Add Your Own Custom Animations
 
-`afetch` includes an extensible plugin system. You can add your own animations without modifying the tool's source code:
+`anifetch` includes an extensible plugin system. You can add your own animations without modifying the tool's source code:
 
-### Method 1: Custom Python Script (`~/.config/afetch/modes/*.py`)
+### Method 1: Custom Python Script (`~/.config/anifetch/modes/*.py`)
 
-Create a Python script inside `~/.config/afetch/modes/`, e.g., `~/.config/afetch/modes/spinner.py`:
+Create a Python script inside `~/.config/anifetch/modes/`, e.g., `~/.config/anifetch/modes/spinner.py`:
 
 ```python
 def render(angle: float) -> list[str]:
@@ -275,14 +275,14 @@ def render(angle: float) -> list[str]:
 
 Run your custom script:
 ```bash
-afetch spinner
+anifetch spinner
 ```
 
 ---
 
-### Method 2: Custom ASCII Frames (`~/.config/afetch/frames/*.txt`)
+### Method 2: Custom ASCII Frames (`~/.config/anifetch/frames/*.txt`)
 
-Create a text file with ASCII frames separated by `---` inside `~/.config/afetch/frames/`, e.g., `~/.config/afetch/frames/bird.txt`:
+Create a text file with ASCII frames separated by `---` inside `~/.config/anifetch/frames/`, e.g., `~/.config/anifetch/frames/bird.txt`:
 
 ```text
        \           /
@@ -305,33 +305,33 @@ Create a text file with ASCII frames separated by `---` inside `~/.config/afetch
 
 Run your custom frame animation:
 ```bash
-afetch bird
+anifetch bird
 ```
 
 ---
 
-### Method 3: Custom GIFs (`~/.config/afetch/gifs/*.gif`)
+### Method 3: Custom GIFs (`~/.config/anifetch/gifs/*.gif`)
 
-Simply drop any `.gif` into `~/.config/afetch/gifs/` or `~/Pictures/`:
+Simply drop any `.gif` into `~/.config/anifetch/gifs/` or `~/Pictures/`:
 
 ```bash
-mkdir -p ~/.config/afetch/gifs
-cp cat.gif ~/.config/afetch/gifs/
+mkdir -p ~/.config/anifetch/gifs
+cp cat.gif ~/.config/anifetch/gifs/
 
-afetch cat.gif
-afetch cat.gif --kitty
+anifetch cat.gif
+anifetch cat.gif --kitty
 ```
 
 ---
 
 ## 🛡️ Interactive Terminal Safety & Diagnostics
 
-`afetch` is engineered to be completely safe for your terminal workflow:
+`anifetch` is engineered to be completely safe for your terminal workflow:
 
-* **Non-interactive TTY Guard:** When run inside pipes, background jobs, automated tools, or non-TTY subshells, `afetch` quietly exits (`exit 0`), ensuring tools like `git`, `ssh`, `rsync`, or IDE terminals are never blocked.
-* **Input Paste Protection:** If characters are already buffered in `stdin` (for instance, when commands are pasted on terminal launch), `afetch` immediately exits without consuming or corrupting the user's input stream.
+* **Non-interactive TTY Guard:** When run inside pipes, background jobs, automated tools, or non-TTY subshells, `anifetch` quietly exits (`exit 0`), ensuring tools like `git`, `ssh`, `rsync`, or IDE terminals are never blocked.
+* **Input Paste Protection:** If characters are already buffered in `stdin` (for instance, when commands are pasted on terminal launch), `anifetch` immediately exits without consuming or corrupting the user's input stream.
 * **Keystroke Preservation:** When dismiss keys are pressed, the key is preserved in the TTY buffer and delivered intact to your shell without dropping characters.
-* **Diagnostics:** Run `afetch --check-terminal` to verify whether your current environment is a genuine interactive terminal.
+* **Diagnostics:** Run `anifetch --check-terminal` to verify whether your current environment is a genuine interactive terminal.
 
 ---
 
@@ -339,16 +339,18 @@ afetch cat.gif --kitty
 
 ### Using the Install Script
 ```bash
-git clone https://github.com/ikittohk14-beep/afetch.git
-cd afetch
+git clone https://github.com/ikittohk14-beep/anifetch.git
+cd anifetch
 ./install.sh
 ```
+*(The installer also creates an `afetch` symlink for backwards compatibility).*
 
 ### Manual Installation
 ```bash
 mkdir -p ~/.local/bin
-cp afetch ~/.local/bin/afetch
-chmod +x ~/.local/bin/afetch
+cp anifetch ~/.local/bin/anifetch
+chmod +x ~/.local/bin/anifetch
+ln -sf ~/.local/bin/anifetch ~/.local/bin/afetch
 ```
 
 Make sure `~/.local/bin` is in your `$PATH`.
@@ -374,19 +376,19 @@ Make sure `~/.local/bin` is in your `$PATH`.
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    afetch -r # Play random animation on shell launch
+    anifetch -r # Play random animation on shell launch
 end
 
-alias fetch="afetch"
+alias fetch="anifetch"
 ```
 
 ### Bash (`~/.bashrc`) / Zsh (`~/.zshrc`)
 ```bash
 if [[ $- == *i* ]]; then
-    afetch -r
+    anifetch -r
 fi
 
-alias fetch="afetch"
+alias fetch="anifetch"
 ```
 
 ---
