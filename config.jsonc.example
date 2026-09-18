@@ -7,6 +7,10 @@
       "keys": "#777777"
     }
   },
+  // Optional default animation or GIF (defaults to "globe" if omitted):
+  // "gif": "cat.gif",
+  // "gifStyle": "kitty", // "blocks", "quad", "kitty", "ascii"
+  // "mode": "donut",     // 3D preset name (saturn, cube, etc.)
   "modules": [
     {
       "type": "title",

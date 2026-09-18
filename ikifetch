@@ -216,7 +216,73 @@ def adjust_cha(line: str, offset: int) -> str:
     return re.sub(r"\033\[(\d+)G", lambda m: f"\033[{offset + int(m.group(1))}G", line)
 
 
-def resolve_config_info(args) -> list[str]:
+def get_config_file(args) -> Optional[Path]:
+    """Resolve which config file to use if any exists."""
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    if getattr(args, "config", None):
+        cand = Path(args.config).expanduser().resolve()
+        if cand.is_file():
+            return cand
+    elif getattr(args, "fastfetch", False):
+        for ff_name in ["config.jsonc", "config.json"]:
+            cand = xdg_config / "fastfetch" / ff_name
+            if cand.is_file():
+                return cand
+    else:
+        for ik_name in ["config.jsonc", "config.json"]:
+            cand = xdg_config / "ikifetch" / ik_name
+            if cand.is_file():
+                return cand
+    return None
+
+
+def parse_config_json(cfg_file: Path) -> dict:
+    """Parse JSON or JSONC file safely stripping comments without touching string literals."""
+    try:
+        text = cfg_file.read_text(encoding="utf-8")
+        out = []
+        i = 0
+        n = len(text)
+        in_str = False
+        escape = False
+
+        while i < n:
+            c = text[i]
+            if in_str:
+                out.append(c)
+                if escape:
+                    escape = False
+                elif c == "\\":
+                    escape = True
+                elif c == '"':
+                    in_str = False
+                i += 1
+            else:
+                if c == '"':
+                    in_str = True
+                    out.append(c)
+                    i += 1
+                elif c == "/" and i + 1 < n and text[i + 1] == "/":
+                    i += 2
+                    while i < n and text[i] != "\n":
+                        i += 1
+                elif c == "/" and i + 1 < n and text[i + 1] == "*":
+                    i += 2
+                    while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                        i += 1
+                    i += 2
+                else:
+                    out.append(c)
+                    i += 1
+
+        cleaned = "".join(out)
+        cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
+        return json.loads(cleaned)
+    except Exception:
+        return {}
+
+
+def resolve_config_info(args, cfg_file: Optional[Path] = None, cfg_data: Optional[dict] = None) -> list[str]:
     """Retrieve system information lines based on user config.
 
     Out of the box, ikifetch is clean and displays ONLY the animated art / GIF.
@@ -228,32 +294,8 @@ def resolve_config_info(args) -> list[str]:
     if getattr(args, "no_info", False):
         return []
 
-    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    cfg_file = None
-
-    # 1. Explicit --config flag
-    if getattr(args, "config", None):
-        cand = Path(args.config).expanduser().resolve()
-        if cand.is_file():
-            cfg_file = cand
-
-    # 2. --fastfetch flag
-    elif getattr(args, "fastfetch", False):
-        for ff_name in ["config.jsonc", "config.json"]:
-            cand = xdg_config / "fastfetch" / ff_name
-            if cand.is_file():
-                cfg_file = cand
-                break
-
-    # 3. Default ikifetch config directory
-    else:
-        for ik_name in ["config.jsonc", "config.json"]:
-            cand = xdg_config / "ikifetch" / ik_name
-            if cand.is_file():
-                cfg_file = cand
-                break
-
-    # If no config file is configured/found, ikifetch remains purely focused on art!
+    if not cfg_file:
+        cfg_file = get_config_file(args)
     if not cfg_file:
         return []
 
@@ -298,15 +340,9 @@ def resolve_config_info(args) -> list[str]:
                 pass
 
     # Native fallback if fastfetch binary is not installed
-    try:
-        raw_text = cfg_file.read_text(encoding="utf-8")
-        cleaned = re.sub(r"//.*", "", raw_text)
-        cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)
-        cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
-        cfg_data = json.loads(cleaned)
-        return _render_native_modules(cfg_data.get("modules", []))
-    except Exception:
-        return []
+    if cfg_data is None:
+        cfg_data = parse_config_json(cfg_file)
+    return _render_native_modules(cfg_data.get("modules", []))
 
 
 def _render_native_modules(modules: list) -> list[str]:
@@ -1639,6 +1675,9 @@ def main():
                 print(f"  • {cm}")
         return
 
+    cfg_file = get_config_file(args)
+    cfg_data = parse_config_json(cfg_file) if cfg_file else {}
+
     # Resolve target from positional or flags
     chosen_mode = "globe"
     gif_file = None
@@ -1664,6 +1703,28 @@ def main():
                 chosen_mode = target_cand.lower()
         elif args.mode:
             chosen_mode = args.mode.lower()
+        elif not args.random:
+            # Check if config specifies a default gif or mode
+            cfg_gif = cfg_data.get("gif")
+            if not cfg_gif and isinstance(cfg_data.get("logo"), dict):
+                src = cfg_data["logo"].get("source")
+                if src and isinstance(src, str) and src.lower().endswith(".gif"):
+                    cfg_gif = src
+
+            if cfg_gif:
+                resolved_gif = resolve_gif_path(cfg_gif)
+                if resolved_gif:
+                    gif_file = resolved_gif
+                    if args.gif_style == "blocks":
+                        cfg_style = cfg_data.get("gifStyle") or cfg_data.get("style")
+                        if not cfg_style and isinstance(cfg_data.get("logo"), dict):
+                            ltype = cfg_data["logo"].get("type", "")
+                            if "kitty" in ltype:
+                                cfg_style = "kitty"
+                        if cfg_style in ["blocks", "quad", "kitty", "ascii"]:
+                            args.gif_style = cfg_style
+            elif cfg_data.get("mode"):
+                chosen_mode = str(cfg_data["mode"]).lower()
 
     if gif_file:
         render_fn = GifRenderer(
@@ -1678,7 +1739,7 @@ def main():
             chosen_mode = random.choice(list(all_modes.keys()))
         render_fn = all_modes.get(chosen_mode, render_globe)
 
-    info_lines = resolve_config_info(args)
+    info_lines = resolve_config_info(args, cfg_file=cfg_file, cfg_data=cfg_data)
 
     if args.static:
         art = render_fn(1.2)
