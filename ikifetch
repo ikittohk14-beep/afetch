@@ -1131,12 +1131,11 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
         return p_gif
 
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    # Search ~/.config/ikifetch/gifs/, ~/.config/anifetch/gifs/ and ~/.config/afetch/gifs/
-    for config_name in ["ikifetch", "anifetch", "afetch"]:
-        cfg_gifs = xdg_config / config_name / "gifs"
-        for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
-            if candidate.is_file():
-                return candidate
+    # Search ~/.config/ikifetch/gifs/
+    cfg_gifs = xdg_config / "ikifetch" / "gifs"
+    for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
+        if candidate.is_file():
+            return candidate
 
     # Search common image folders (~/Pictures/, ~/Downloads/, ~/Пикчи/, ~/Загрузки/)
     for folder in [
@@ -1158,78 +1157,76 @@ def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> di
     """Discover user-created animation modes and GIFs from ~/.config/ikifetch/."""
     custom = {}
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    config_dir = xdg_config / "ikifetch"
+    if not config_dir.is_dir():
+        return custom
 
-    for config_name in ["ikifetch", "anifetch", "afetch"]:
-        config_dir = xdg_config / config_name
-        if not config_dir.is_dir():
-            continue
+    # 1. Python script plugins in modes/*.py
+    modes_dir = config_dir / "modes"
+    if modes_dir.is_dir():
+        for py_file in modes_dir.glob("*.py"):
+            try:
+                mod_name = py_file.stem
+                if mod_name in custom:
+                    continue
+                spec = importlib.util.spec_from_file_location(f"ikifetch_plugin_{mod_name}", str(py_file))
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "render"):
+                        custom[mod_name] = getattr(mod, "render")
+            except Exception:
+                pass
 
-        # 1. Python script plugins in modes/*.py
-        modes_dir = config_dir / "modes"
-        if modes_dir.is_dir():
-            for py_file in modes_dir.glob("*.py"):
-                try:
-                    mod_name = py_file.stem
-                    if mod_name in custom:
-                        continue
-                    spec = importlib.util.spec_from_file_location(f"ikifetch_plugin_{mod_name}", str(py_file))
-                    if spec and spec.loader:
-                        mod = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(mod)
-                        if hasattr(mod, "render"):
-                            custom[mod_name] = getattr(mod, "render")
-                except Exception:
-                    pass
+    # 2. Text frame animations in frames/*.txt
+    frames_dir = config_dir / "frames"
+    if frames_dir.is_dir():
+        for txt_file in frames_dir.glob("*.txt"):
+            try:
+                anim_name = txt_file.stem
+                if anim_name in custom:
+                    continue
+                content = txt_file.read_text(encoding="utf-8")
+                raw_frames = [f.strip("\r\n").split("\n") for f in content.split("---") if f.strip()]
+                if raw_frames:
+                    def make_frame_renderer(frames_list):
+                        def frame_renderer(angle: float):
+                            f_idx = int(angle * 4.0) % len(frames_list)
+                            f_lines = frames_list[f_idx]
+                            out = []
+                            for i in range(CANVAS_HEIGHT):
+                                if i < len(f_lines):
+                                    line = f_lines[i]
+                                    out.append(line[:CANVAS_WIDTH].ljust(CANVAS_WIDTH))
+                                else:
+                                    out.append(" " * CANVAS_WIDTH)
+                            return out
+                        return frame_renderer
+                    custom[anim_name] = make_frame_renderer(raw_frames)
+            except Exception:
+                pass
 
-        # 2. Text frame animations in frames/*.txt
-        frames_dir = config_dir / "frames"
-        if frames_dir.is_dir():
-            for txt_file in frames_dir.glob("*.txt"):
-                try:
-                    anim_name = txt_file.stem
-                    if anim_name in custom:
-                        continue
-                    content = txt_file.read_text(encoding="utf-8")
-                    raw_frames = [f.strip("\r\n").split("\n") for f in content.split("---") if f.strip()]
-                    if raw_frames:
-                        def make_frame_renderer(frames_list):
-                            def frame_renderer(angle: float):
-                                f_idx = int(angle * 4.0) % len(frames_list)
-                                f_lines = frames_list[f_idx]
-                                out = []
-                                for i in range(CANVAS_HEIGHT):
-                                    if i < len(f_lines):
-                                        line = f_lines[i]
-                                        out.append(line[:CANVAS_WIDTH].ljust(CANVAS_WIDTH))
-                                    else:
-                                        out.append(" " * CANVAS_WIDTH)
-                                return out
-                            return frame_renderer
-                        custom[anim_name] = make_frame_renderer(raw_frames)
-                except Exception:
-                    pass
-
-        # 3. User GIF animations in gifs/*.gif
-        gifs_dir = config_dir / "gifs"
-        if gifs_dir.is_dir() and HAS_PIL:
-            for gif_file in gifs_dir.glob("*.gif"):
-                try:
-                    anim_name = gif_file.stem
-                    if anim_name in custom:
-                        continue
-                    def make_gif_renderer(gpath, gstyle, gstatic):
-                        _cached = None
-                        def _renderer(angle: float = 0.0):
-                            nonlocal _cached
-                            if _cached is None:
-                                _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle, static=gstatic)
-                            return _cached(angle)
+    # 3. User GIF animations in gifs/*.gif
+    gifs_dir = config_dir / "gifs"
+    if gifs_dir.is_dir() and HAS_PIL:
+        for gif_file in gifs_dir.glob("*.gif"):
+            try:
+                anim_name = gif_file.stem
+                if anim_name in custom:
+                    continue
+                def make_gif_renderer(gpath, gstyle, gstatic):
+                    _cached = None
+                    def _renderer(angle: float = 0.0):
+                        nonlocal _cached
+                        if _cached is None:
+                            _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle, static=gstatic)
                         return _renderer
-                    renderer_fn = make_gif_renderer(gif_file, gif_style, static)
-                    custom[anim_name] = renderer_fn
-                    custom[gif_file.name] = renderer_fn
-                except Exception:
-                    pass
+                    return _renderer
+                renderer_fn = make_gif_renderer(gif_file, gif_style, static)
+                custom[anim_name] = renderer_fn
+                custom[gif_file.name] = renderer_fn
+            except Exception:
+                pass
 
     return custom
 

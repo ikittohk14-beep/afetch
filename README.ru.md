@@ -343,14 +343,12 @@ git clone https://github.com/ikittohk14-beep/ikifetch.git
 cd ikifetch
 ./install.sh
 ```
-*(Скрипт также автоматически создаёт симлинк `afetch` для обратной совместимости).*
 
 ### Вручную
 ```bash
 mkdir -p ~/.local/bin
 cp ikifetch ~/.local/bin/ikifetch
 chmod +x ~/.local/bin/ikifetch
-ln -sf ~/.local/bin/ikifetch ~/.local/bin/afetch
 ```
 
 Убедитесь, что директория `~/.local/bin` добавлена в переменную `$PATH`.

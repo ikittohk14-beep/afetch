@@ -343,14 +343,12 @@ git clone https://github.com/ikittohk14-beep/ikifetch.git
 cd ikifetch
 ./install.sh
 ```
-*(The installer also creates an `afetch` symlink for backwards compatibility).*
 
 ### Manual Installation
 ```bash
 mkdir -p ~/.local/bin
 cp ikifetch ~/.local/bin/ikifetch
 chmod +x ~/.local/bin/ikifetch
-ln -sf ~/.local/bin/ikifetch ~/.local/bin/afetch
 ```
 
 Make sure `~/.local/bin` is in your `$PATH`.
