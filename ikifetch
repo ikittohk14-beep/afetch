@@ -153,6 +153,10 @@ _clear_kitty_on_exit = False
 
 def _restore_terminal():
     global _cursor_hidden, _orig_termios, _kitty_used, _clear_kitty_on_exit
+    try:
+        sys.stdout.write("\033[?7h")  # Re-enable terminal line wrap
+    except Exception:
+        pass
     if _kitty_used and _clear_kitty_on_exit:
         try:
             # Clear Kitty graphics animation image (ID 1) from terminal
@@ -1263,17 +1267,20 @@ def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
     except Exception:
         cols, rows = 80, 24
 
-    top_pad = max((rows - CARD_RAW_HEIGHT) // 2, 0)
+    card_height = len(art_lines)
+    top_pad = max((rows - card_height) // 2, 0)
     left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
 
     lines = [""] * top_pad
-    for art, info in zip(art_lines, info_lines):
-        lines.append(f"{left_pad}{art}    {info}\033[K")
+    for i in range(card_height):
+        art = art_lines[i]
+        info = info_lines[i] if i < len(info_lines) else ""
+        lines.append(f"{left_pad}{art}    {info}")
     return "\n".join(lines)
 
 
 def run_animated(info: dict, render_fn, fps: int = 35):
-    """Run continuous 3D rotation until any key is pressed or Ctrl+C."""
+    """Run continuous 3D rotation with bulletproof resize and reflow protection."""
     global _cursor_hidden, _orig_termios, _clear_kitty_on_exit
     _clear_kitty_on_exit = True
 
@@ -1292,13 +1299,29 @@ def run_animated(info: dict, render_fn, fps: int = 35):
     try:
         _orig_termios = termios.tcgetattr(sys.stdin.fileno())
         tty.setcbreak(sys.stdin.fileno())
-        sys.stdout.write("\033[?25l")
+        # Hide cursor (\033[?25l) and disable line wrapping (\033[?7l) to prevent resize reflow tears
+        sys.stdout.write("\033[?25l\033[?7l")
         _cursor_hidden = True
     except Exception:
         # If termios configuration fails, safely return without hanging
         return
 
     angle = 0.0
+    _resized = False
+
+    def _on_resize(signum=None, frame=None):
+        nonlocal _resized
+        _resized = True
+
+    prev_sigwinch = None
+    if hasattr(signal, "SIGWINCH"):
+        try:
+            prev_sigwinch = signal.signal(signal.SIGWINCH, _on_resize)
+        except Exception:
+            pass
+
+    prev_cols, prev_rows = -1, -1
+    last_rendered_bottom = 0
 
     try:
         sys.stdout.write("\033[2J\033[H")
@@ -1313,20 +1336,66 @@ def run_animated(info: dict, render_fn, fps: int = 35):
                     # Do NOT swallow the key with sys.stdin.read(1)!
                     # Leaving it unread allows the calling shell (fish/bash) to receive it intact.
                     break
+            except (InterruptedError, select.error):
+                # Interrupted by resize signal (SIGWINCH), flag resize and keep going smoothly
+                _resized = True
             except Exception:
                 break
 
-            art_lines = render_fn(angle)
-            card = compose_centered_card(art_lines, info_lines)
+            try:
+                cols, rows = shutil.get_terminal_size((80, 24))
+            except Exception:
+                cols, rows = 80, 24
 
-            sys.stdout.write("\033[H" + card)
+            # Detect resize either via SIGWINCH or terminal dimension poll
+            if _resized or cols != prev_cols or rows != prev_rows:
+                _resized = False
+                prev_cols, prev_rows = cols, rows
+                # Clear entire screen and reset Kitty GPU image placement if any
+                sys.stdout.write("\033_Ga=d,d=i,i=1\033\\\033[2J\033[H")
+                sys.stdout.flush()
+
+            art_lines = render_fn(angle)
+            card_height = len(art_lines)
+            top_pad = max((rows - card_height) // 2, 0)
+            start_row = top_pad + 1  # 1-indexed row in terminal
+            left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
+
+            # Draw using absolute row coordinates (\033[{row};1H).
+            # This completely avoids '\n' scrolling and eliminates duplicate/reflow artifacts!
+            frame_buf = []
+            for i in range(card_height):
+                target_row = start_row + i
+                if target_row > rows:
+                    break  # Never write past the bottom row of terminal!
+                art = art_lines[i]
+                info = info_lines[i] if i < len(info_lines) else ""
+                # Move directly to target_row, column 1, clear entire line (\033[2K), and output row
+                frame_buf.append(f"\033[{target_row};1H\033[2K{left_pad}{art}    {info}")
+
+            last_rendered_bottom = min(start_row + card_height - 1, rows)
+
+            sys.stdout.write("".join(frame_buf))
             sys.stdout.flush()
 
             angle += 0.045
             time.sleep(frame_delay)
     finally:
+        if prev_sigwinch is not None:
+            try:
+                signal.signal(signal.SIGWINCH, prev_sigwinch)
+            except Exception:
+                pass
+
+        try:
+            cols, rows = shutil.get_terminal_size((80, 24))
+            next_row = min(last_rendered_bottom + 1, rows)
+            # Position cursor neatly on the line below the card
+            sys.stdout.write(f"\033[{next_row};1H\n")
+        except Exception:
+            sys.stdout.write("\n\n")
+
         _restore_terminal()
-        sys.stdout.write("\n\n")
         sys.stdout.flush()
 
 
