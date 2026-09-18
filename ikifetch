@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""anifetch — Minimalist animated 3D ASCII & GIF system information fetch tool.
+"""ikifetch — Minimalist animated 3D ASCII & GIF system information fetch tool.
 
 Supports multiple built-in 3D animation modes and custom user plugins/frames.
   • globe   / planet   — Raymarched rotating 3D planet with surface features
@@ -12,9 +12,9 @@ Supports multiple built-in 3D animation modes and custom user plugins/frames.
   • heart              — Pulsing 3D mathematical heart wireframe
 
 Custom modes can be placed in:
-  • ~/.config/anifetch/modes/*.py   (Python render(angle) functions)
-  • ~/.config/anifetch/frames/*.txt (Frame-by-frame ASCII animation files)
-  • ~/.config/anifetch/gifs/*.gif   (GIF animations)
+  • ~/.config/ikifetch/modes/*.py   (Python render(angle) functions)
+  • ~/.config/ikifetch/frames/*.txt (Frame-by-frame ASCII animation files)
+  • ~/.config/ikifetch/gifs/*.gif   (GIF animations)
 
 MIT License © 2026 ikittohk14-beep
 """
@@ -50,7 +50,7 @@ except ImportError:
 # ── Terminal Detection & Safety Helpers ───────────────────────
 
 def is_real_interactive_terminal() -> bool:
-    """Detect whether anifetch is running inside a genuine interactive user terminal.
+    """Detect whether ikifetch is running inside a genuine interactive user terminal.
 
     Returns False if running in a non-interactive subshell, script, pipe, CI,
     background runner, or dumb terminal, preventing hangs, swallowed keystrokes,
@@ -1120,7 +1120,7 @@ class GifRenderer:
 
 
 def resolve_gif_path(target: str | Path | None) -> Path | None:
-    """Resolve GIF file from path, name, or common user folders (~/.config/anifetch/gifs, ~/Pictures, ~/Downloads)."""
+    """Resolve GIF file from path, name, or common user folders (~/.config/ikifetch/gifs, ~/Pictures, ~/Downloads)."""
     if not target:
         return None
     p = Path(target).expanduser()
@@ -1131,8 +1131,8 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
         return p_gif
 
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    # Search ~/.config/anifetch/gifs/ and ~/.config/afetch/gifs/
-    for config_name in ["anifetch", "afetch"]:
+    # Search ~/.config/ikifetch/gifs/, ~/.config/anifetch/gifs/ and ~/.config/afetch/gifs/
+    for config_name in ["ikifetch", "anifetch", "afetch"]:
         cfg_gifs = xdg_config / config_name / "gifs"
         for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
             if candidate.is_file():
@@ -1155,11 +1155,11 @@ def resolve_gif_path(target: str | Path | None) -> Path | None:
 # ── Custom Animation Discovery System ──────────────────────
 
 def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> dict:
-    """Discover user-created animation modes and GIFs from ~/.config/anifetch/."""
+    """Discover user-created animation modes and GIFs from ~/.config/ikifetch/."""
     custom = {}
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
 
-    for config_name in ["anifetch", "afetch"]:
+    for config_name in ["ikifetch", "anifetch", "afetch"]:
         config_dir = xdg_config / config_name
         if not config_dir.is_dir():
             continue
@@ -1172,7 +1172,7 @@ def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> di
                     mod_name = py_file.stem
                     if mod_name in custom:
                         continue
-                    spec = importlib.util.spec_from_file_location(f"anifetch_plugin_{mod_name}", str(py_file))
+                    spec = importlib.util.spec_from_file_location(f"ikifetch_plugin_{mod_name}", str(py_file))
                     if spec and spec.loader:
                         mod = importlib.util.module_from_spec(spec)
                         spec.loader.exec_module(mod)
@@ -1335,7 +1335,7 @@ def run_animated(info: dict, render_fn, fps: int = 35):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="anifetch — Minimalist animated 3D ASCII and GIF system information fetch."
+        description="ikifetch — Minimalist animated 3D ASCII and GIF system information fetch."
     )
     parser.add_argument(
         "target",
@@ -1420,7 +1420,7 @@ def main():
     # Diagnostic flag
     if args.check_terminal:
         diag = get_terminal_diagnostics()
-        print("anifetch Terminal Diagnostics:")
+        print("ikifetch Terminal Diagnostics:")
         print(f"  • Real Interactive TTY : {'YES' if diag['real_interactive_tty'] else 'NO'}")
         print(f"  • stdin isatty         : {diag['stdin_isatty']}")
         print(f"  • stdout isatty        : {diag['stdout_isatty']}")
@@ -1434,7 +1434,7 @@ def main():
     all_modes = {**BUILTIN_MODES, **custom_modes}
 
     if args.list_modes:
-        print("Built-in 3D animation modes in anifetch:")
+        print("Built-in 3D animation modes in ikifetch:")
         print("  • globe   / planet  - 3D Raymarched Planet with continental terrain")
         print("  • saturn            - 3D Planet with Tilted Orbital Rings")
         print("  • donut   / torus   - Classic Dual-Axis 3D Mathematical Torus")
@@ -1444,7 +1444,7 @@ def main():
         print("  • cat     / neko    - Animated Pixel Cat with blinking eyes & swishing tail")
         print("  • heart             - Pulsing 3D Mathematical Heart")
         if custom_modes:
-            print("\nUser custom modes & GIFs (~/.config/anifetch/):")
+            print("\nUser custom modes & GIFs (~/.config/ikifetch/):")
             for cm in sorted(custom_modes.keys()):
                 print(f"  • {cm}")
         return
@@ -1456,12 +1456,12 @@ def main():
     if args.gif:
         gif_file = resolve_gif_path(args.gif)
         if not gif_file:
-            print(f"anifetch: GIF file not found: {args.gif}", file=sys.stderr)
+            print(f"ikifetch: GIF file not found: {args.gif}", file=sys.stderr)
             sys.exit(1)
     else:
         target_cand = args.target or args.mode
         if target_cand:
-            # Handle if style was passed as first positional (e.g. anifetch kitty)
+            # Handle if style was passed as first positional (e.g. ikifetch kitty)
             if target_cand in ["blocks", "quad", "kitty", "ascii"]:
                 args.gif_style = target_cand
                 target_cand = args.mode or "globe"
@@ -1497,7 +1497,7 @@ def main():
         return
 
     # ── Real Terminal Safety Guard for Animation ─────────────────
-    # If anifetch is launched in a non-interactive shell (automated tool execution,
+    # If ikifetch is launched in a non-interactive shell (automated tool execution,
     # IDE subtasks, scp/git hooks, or background pipes), avoid hanging or breaking stdin:
     if not args.force_terminal and not is_real_interactive_terminal():
         sys.exit(0)

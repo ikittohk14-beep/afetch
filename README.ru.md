@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 anifetch
+# 🌐 ikifetch
 
 **Минималистичная анимированная системная утилита с 3D ASCII-графикой и поддержкой GIF для терминалов Linux и Unix.**
 
@@ -10,7 +10,7 @@
 
 ---
 
-**anifetch** — это быстрый, стильный и лёгкий CLI-инструмент для вывода информации о системе. Он сочетает математические движки 3D-реймарчинга, воспроизведение анимированных GIF с аппаратным ускорением на GPU, интеллектуальную защиту интерактивного терминала, динамическое центрирование и расширяемую систему пользовательских анимаций.
+**ikifetch** — это быстрый, стильный и лёгкий CLI-инструмент для вывода информации о системе. Он сочетает математические движки 3D-реймарчинга, воспроизведение анимированных GIF с аппаратным ускорением на GPU, интеллектуальную защиту интерактивного терминала, динамическое центрирование и расширяемую систему пользовательских анимаций.
 
 ```text
                                 user@hostname
@@ -42,7 +42,7 @@
   * `quad`: Субпиксельные квадранты 2×2 (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) с удвоенной горизонтальной детализацией (56×30 точек) и прозрачностью фона.
   * `kitty`: Нативное HD-качество оригинальных пикселей через графический протокол Kitty.
   * `ascii`: Классический 10-градационный монохромный ASCII-арт.
-* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `anifetch cat.gif` или `anifetch ~/Pictures/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/.config/anifetch/gifs/`, `~/Pictures/` и `~/Downloads/`.
+* 🔍 **Умный поиск файлов и гибкий CLI:** Запускайте `ikifetch cat.gif` или `ikifetch ~/Pictures/cat.gif` без лишних флагов. Утилита автоматически ищет файлы в `~/.config/ikifetch/gifs/`, `~/Pictures/` и `~/Downloads/`.
 
 ---
 
@@ -191,44 +191,44 @@
 ### Базовые команды
 ```bash
 # Стандартный запуск (вращающаяся 3D-Земля):
-anifetch
+ikifetch
 
 # Запуск любого режима по имени:
-anifetch saturn
-anifetch donut
-anifetch cube
-anifetch galaxy
-anifetch dna
-anifetch cat
-anifetch heart
+ikifetch saturn
+ikifetch donut
+ikifetch cube
+ikifetch galaxy
+ikifetch dna
+ikifetch cat
+ikifetch heart
 
 # Случайный режим при каждом запуске:
-anifetch -r
+ikifetch -r
 ```
 
 ### Воспроизведение GIF-анимаций
-`anifetch` автоматически ищет файлы в текущей директории, `~/.config/anifetch/gifs/`, `~/Pictures/` или `~/Downloads/`:
+`ikifetch` автоматически ищет файлы в текущей директории, `~/.config/ikifetch/gifs/`, `~/Pictures/` или `~/Downloads/`:
 
 ```bash
 # Запуск гифки по имени или пути:
-anifetch cat.gif
-anifetch ~/Pictures/cat.gif
+ikifetch cat.gif
+ikifetch ~/Pictures/cat.gif
 
 # Выбор движка отрисовки:
-anifetch cat.gif --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
-anifetch cat.gif quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
-anifetch cat.gif blocks                  # Сочные Truecolor полублоки (по умолчанию)
-anifetch cat.gif ascii                   # Ретро-стиль символами ASCII
+ikifetch cat.gif --kitty                 # Нативное HD-качество на GPU через Kitty-протокол
+ikifetch cat.gif quad                    # Субпиксельные квадранты 2x2 (удвоенная детализация)
+ikifetch cat.gif blocks                  # Сочные Truecolor полублоки (по умолчанию)
+ikifetch cat.gif ascii                   # Ретро-стиль символами ASCII
 
 # Статический режим (моментальный вывод одного кадра без анимации, как neofetch):
-anifetch cat.gif --static
-anifetch cat.gif --kitty --static
-anifetch -s
+ikifetch cat.gif --static
+ikifetch cat.gif --kitty --static
+ikifetch -s
 ```
 
 ### Опции и флаги
 ```bash
-anifetch [цель] [стиль] [опции]
+ikifetch [цель] [стиль] [опции]
 
 Позиционные аргументы:
   цель                  Имя встроенного режима или имя/путь к файлу .gif.
@@ -251,11 +251,11 @@ anifetch [цель] [стиль] [опции]
 
 ## 🎨 Создание собственных анимаций
 
-В `anifetch` встроена модульная система плагинов, позволяющая добавлять свои пресеты без правок исходного кода:
+В `ikifetch` встроена модульная система плагинов, позволяющая добавлять свои пресеты без правок исходного кода:
 
-### Способ 1: Скрипт на Python (`~/.config/anifetch/modes/*.py`)
+### Способ 1: Скрипт на Python (`~/.config/ikifetch/modes/*.py`)
 
-Создайте файл Python в каталоге `~/.config/anifetch/modes/`, например `~/.config/anifetch/modes/spinner.py`:
+Создайте файл Python в каталоге `~/.config/ikifetch/modes/`, например `~/.config/ikifetch/modes/spinner.py`:
 
 ```python
 def render(angle: float) -> list[str]:
@@ -275,14 +275,14 @@ def render(angle: float) -> list[str]:
 
 Запуск:
 ```bash
-anifetch spinner
+ikifetch spinner
 ```
 
 ---
 
-### Способ 2: Текстовые ASCII-кадры (`~/.config/anifetch/frames/*.txt`)
+### Способ 2: Текстовые ASCII-кадры (`~/.config/ikifetch/frames/*.txt`)
 
-Создайте текстовый файл с кадрами, разделёнными строкой `---`, например `~/.config/anifetch/frames/bird.txt`:
+Создайте текстовый файл с кадрами, разделёнными строкой `---`, например `~/.config/ikifetch/frames/bird.txt`:
 
 ```text
        \           /
@@ -305,33 +305,33 @@ anifetch spinner
 
 Запуск:
 ```bash
-anifetch bird
+ikifetch bird
 ```
 
 ---
 
-### Способ 3: Добавление GIF-анимаций (`~/.config/anifetch/gifs/*.gif`)
+### Способ 3: Добавление GIF-анимаций (`~/.config/ikifetch/gifs/*.gif`)
 
-Просто скопируйте любой `.gif` в `~/.config/anifetch/gifs/` или в вашу папку `~/Pictures/`:
+Просто скопируйте любой `.gif` в `~/.config/ikifetch/gifs/` или в вашу папку `~/Pictures/`:
 
 ```bash
-mkdir -p ~/.config/anifetch/gifs
-cp cat.gif ~/.config/anifetch/gifs/
+mkdir -p ~/.config/ikifetch/gifs
+cp cat.gif ~/.config/ikifetch/gifs/
 
-anifetch cat.gif
-anifetch cat.gif --kitty
+ikifetch cat.gif
+ikifetch cat.gif --kitty
 ```
 
 ---
 
 ## 🛡️ Безопасность терминала и защита ввода
 
-`anifetch` спроектирован так, чтобы не нарушать работу рабочего окружения:
+`ikifetch` спроектирован так, чтобы не нарушать работу рабочего окружения:
 
-* **Защита неинтерактивного TTY:** При вызове внутри конвейеров (pipes), скриптов сборки, фоновых процессов или субшеллах без TTY `anifetch` моментально и тихо завершается с кодом 0, предотвращая зависание `git`, `ssh`, `rsync` или терминалов IDE.
-* **Защита вставки команд (Paste Guard):** Если в `stdin` уже есть буферизованные символы (например, при автозаполнении или быстрой вставке текста при открытии терминала), `anifetch` мгновенно завершается, не проглатывая и не искажая пользовательский ввод.
+* **Защита неинтерактивного TTY:** При вызове внутри конвейеров (pipes), скриптов сборки, фоновых процессов или субшеллах без TTY `ikifetch` моментально и тихо завершается с кодом 0, предотвращая зависание `git`, `ssh`, `rsync` или терминалов IDE.
+* **Защита вставки команд (Paste Guard):** Если в `stdin` уже есть буферизованные символы (например, при автозаполнении или быстрой вставке текста при открытии терминала), `ikifetch` мгновенно завершается, не проглатывая и не искажая пользовательский ввод.
 * **Сохранение клавиши выхода:** При нажатии любой клавиши для выхода из анимации символ не считывается впустую, а остаётся в буфере терминала и передаётся командной оболочке.
-* **Диагностика:** Команда `anifetch --check-terminal` позволяет проверить готовность окружения.
+* **Диагностика:** Команда `ikifetch --check-terminal` позволяет проверить готовность окружения.
 
 ---
 
@@ -339,8 +339,8 @@ anifetch cat.gif --kitty
 
 ### Через установочный скрипт
 ```bash
-git clone https://github.com/ikittohk14-beep/anifetch.git
-cd anifetch
+git clone https://github.com/ikittohk14-beep/ikifetch.git
+cd ikifetch
 ./install.sh
 ```
 *(Скрипт также автоматически создаёт симлинк `afetch` для обратной совместимости).*
@@ -348,9 +348,9 @@ cd anifetch
 ### Вручную
 ```bash
 mkdir -p ~/.local/bin
-cp anifetch ~/.local/bin/anifetch
-chmod +x ~/.local/bin/anifetch
-ln -sf ~/.local/bin/anifetch ~/.local/bin/afetch
+cp ikifetch ~/.local/bin/ikifetch
+chmod +x ~/.local/bin/ikifetch
+ln -sf ~/.local/bin/ikifetch ~/.local/bin/afetch
 ```
 
 Убедитесь, что директория `~/.local/bin` добавлена в переменную `$PATH`.
@@ -376,19 +376,19 @@ ln -sf ~/.local/bin/anifetch ~/.local/bin/afetch
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    anifetch -r # Случайная 3D-анимация при открытии вкладки
+    ikifetch -r # Случайная 3D-анимация при открытии вкладки
 end
 
-alias fetch="anifetch"
+alias fetch="ikifetch"
 ```
 
 ### Bash (`~/.bashrc`) / Zsh (`~/.zshrc`)
 ```bash
 if [[ $- == *i* ]]; then
-    anifetch -r
+    ikifetch -r
 fi
 
-alias fetch="anifetch"
+alias fetch="ikifetch"
 ```
 
 ---

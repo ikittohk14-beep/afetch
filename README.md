@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌐 anifetch
+# 🌐 ikifetch
 
 **Minimalist, animated 3D ASCII & GIF system information fetch for Linux and Unix terminals.**
 
@@ -10,7 +10,7 @@
 
 ---
 
-**anifetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
+**ikifetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
 
 ```text
                                 user@hostname
@@ -42,7 +42,7 @@
   * `quad`: Subpixel 2×2 quadrants (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) providing double horizontal detail (56×30 dots) with native terminal alpha transparency.
   * `kitty`: Pure HD native pixel graphics directly rendered on the GPU.
   * `ascii`: 10-level grayscale monochrome ASCII art.
-* 🔍 **Smart Path & Name Resolution:** Run `anifetch cat.gif` or `anifetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/.config/anifetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
+* 🔍 **Smart Path & Name Resolution:** Run `ikifetch cat.gif` or `ikifetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/.config/ikifetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
 
 ---
 
@@ -191,44 +191,44 @@ Pulsing mathematical 3D wireframe heart curve.
 ### Basic Usage
 ```bash
 # Default mode (rotating 3D Globe):
-anifetch
+ikifetch
 
 # Run any built-in 3D mode by name:
-anifetch saturn
-anifetch donut
-anifetch cube
-anifetch galaxy
-anifetch dna
-anifetch cat
-anifetch heart
+ikifetch saturn
+ikifetch donut
+ikifetch cube
+ikifetch galaxy
+ikifetch dna
+ikifetch cat
+ikifetch heart
 
 # Pick a random 3D animation mode on launch:
-anifetch -r
+ikifetch -r
 ```
 
 ### GIF Animations
-`anifetch` will search for GIF files in your current directory, `~/.config/anifetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
+`ikifetch` will search for GIF files in your current directory, `~/.config/ikifetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
 
 ```bash
 # Play a GIF by name or path:
-anifetch cat.gif
-anifetch ~/Pictures/cat.gif
+ikifetch cat.gif
+ikifetch ~/Pictures/cat.gif
 
 # Choose rendering engine:
-anifetch cat.gif --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
-anifetch cat.gif quad                    # Subpixel 2x2 quadrants (double detail)
-anifetch cat.gif blocks                  # Sharp Truecolor half-blocks (default)
-anifetch cat.gif ascii                   # Retro monochrome ASCII
+ikifetch cat.gif --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
+ikifetch cat.gif quad                    # Subpixel 2x2 quadrants (double detail)
+ikifetch cat.gif blocks                  # Sharp Truecolor half-blocks (default)
+ikifetch cat.gif ascii                   # Retro monochrome ASCII
 
 # Static display mode (instant output without animation, like neofetch):
-anifetch cat.gif --static
-anifetch cat.gif --kitty --static
-anifetch -s
+ikifetch cat.gif --static
+ikifetch cat.gif --kitty --static
+ikifetch -s
 ```
 
 ### Options & Flags
 ```bash
-anifetch [target] [style] [options]
+ikifetch [target] [style] [options]
 
 Positionals:
   target                Animation mode name, preset, or path/name of a .gif file.
@@ -251,11 +251,11 @@ Options:
 
 ## 🎨 How to Add Your Own Custom Animations
 
-`anifetch` includes an extensible plugin system. You can add your own animations without modifying the tool's source code:
+`ikifetch` includes an extensible plugin system. You can add your own animations without modifying the tool's source code:
 
-### Method 1: Custom Python Script (`~/.config/anifetch/modes/*.py`)
+### Method 1: Custom Python Script (`~/.config/ikifetch/modes/*.py`)
 
-Create a Python script inside `~/.config/anifetch/modes/`, e.g., `~/.config/anifetch/modes/spinner.py`:
+Create a Python script inside `~/.config/ikifetch/modes/`, e.g., `~/.config/ikifetch/modes/spinner.py`:
 
 ```python
 def render(angle: float) -> list[str]:
@@ -275,14 +275,14 @@ def render(angle: float) -> list[str]:
 
 Run your custom script:
 ```bash
-anifetch spinner
+ikifetch spinner
 ```
 
 ---
 
-### Method 2: Custom ASCII Frames (`~/.config/anifetch/frames/*.txt`)
+### Method 2: Custom ASCII Frames (`~/.config/ikifetch/frames/*.txt`)
 
-Create a text file with ASCII frames separated by `---` inside `~/.config/anifetch/frames/`, e.g., `~/.config/anifetch/frames/bird.txt`:
+Create a text file with ASCII frames separated by `---` inside `~/.config/ikifetch/frames/`, e.g., `~/.config/ikifetch/frames/bird.txt`:
 
 ```text
        \           /
@@ -305,33 +305,33 @@ Create a text file with ASCII frames separated by `---` inside `~/.config/anifet
 
 Run your custom frame animation:
 ```bash
-anifetch bird
+ikifetch bird
 ```
 
 ---
 
-### Method 3: Custom GIFs (`~/.config/anifetch/gifs/*.gif`)
+### Method 3: Custom GIFs (`~/.config/ikifetch/gifs/*.gif`)
 
-Simply drop any `.gif` into `~/.config/anifetch/gifs/` or `~/Pictures/`:
+Simply drop any `.gif` into `~/.config/ikifetch/gifs/` or `~/Pictures/`:
 
 ```bash
-mkdir -p ~/.config/anifetch/gifs
-cp cat.gif ~/.config/anifetch/gifs/
+mkdir -p ~/.config/ikifetch/gifs
+cp cat.gif ~/.config/ikifetch/gifs/
 
-anifetch cat.gif
-anifetch cat.gif --kitty
+ikifetch cat.gif
+ikifetch cat.gif --kitty
 ```
 
 ---
 
 ## 🛡️ Interactive Terminal Safety & Diagnostics
 
-`anifetch` is engineered to be completely safe for your terminal workflow:
+`ikifetch` is engineered to be completely safe for your terminal workflow:
 
-* **Non-interactive TTY Guard:** When run inside pipes, background jobs, automated tools, or non-TTY subshells, `anifetch` quietly exits (`exit 0`), ensuring tools like `git`, `ssh`, `rsync`, or IDE terminals are never blocked.
-* **Input Paste Protection:** If characters are already buffered in `stdin` (for instance, when commands are pasted on terminal launch), `anifetch` immediately exits without consuming or corrupting the user's input stream.
+* **Non-interactive TTY Guard:** When run inside pipes, background jobs, automated tools, or non-TTY subshells, `ikifetch` quietly exits (`exit 0`), ensuring tools like `git`, `ssh`, `rsync`, or IDE terminals are never blocked.
+* **Input Paste Protection:** If characters are already buffered in `stdin` (for instance, when commands are pasted on terminal launch), `ikifetch` immediately exits without consuming or corrupting the user's input stream.
 * **Keystroke Preservation:** When dismiss keys are pressed, the key is preserved in the TTY buffer and delivered intact to your shell without dropping characters.
-* **Diagnostics:** Run `anifetch --check-terminal` to verify whether your current environment is a genuine interactive terminal.
+* **Diagnostics:** Run `ikifetch --check-terminal` to verify whether your current environment is a genuine interactive terminal.
 
 ---
 
@@ -339,8 +339,8 @@ anifetch cat.gif --kitty
 
 ### Using the Install Script
 ```bash
-git clone https://github.com/ikittohk14-beep/anifetch.git
-cd anifetch
+git clone https://github.com/ikittohk14-beep/ikifetch.git
+cd ikifetch
 ./install.sh
 ```
 *(The installer also creates an `afetch` symlink for backwards compatibility).*
@@ -348,9 +348,9 @@ cd anifetch
 ### Manual Installation
 ```bash
 mkdir -p ~/.local/bin
-cp anifetch ~/.local/bin/anifetch
-chmod +x ~/.local/bin/anifetch
-ln -sf ~/.local/bin/anifetch ~/.local/bin/afetch
+cp ikifetch ~/.local/bin/ikifetch
+chmod +x ~/.local/bin/ikifetch
+ln -sf ~/.local/bin/ikifetch ~/.local/bin/afetch
 ```
 
 Make sure `~/.local/bin` is in your `$PATH`.
@@ -376,19 +376,19 @@ Make sure `~/.local/bin` is in your `$PATH`.
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    anifetch -r # Play random animation on shell launch
+    ikifetch -r # Play random animation on shell launch
 end
 
-alias fetch="anifetch"
+alias fetch="ikifetch"
 ```
 
 ### Bash (`~/.bashrc`) / Zsh (`~/.zshrc`)
 ```bash
 if [[ $- == *i* ]]; then
-    anifetch -r
+    ikifetch -r
 fi
 
-alias fetch="anifetch"
+alias fetch="ikifetch"
 ```
 
 ---
