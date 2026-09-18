@@ -1,26 +1,50 @@
+<div align="center">
+
 # 🌐 afetch
 
-**afetch** is a minimalist, animated 3D ASCII system information fetch tool for Linux and Unix terminals.
+**Minimalist, animated 3D ASCII & GIF system information fetch for Linux and Unix terminals.**
 
-It combines mathematical 3D raymarching/rendering engines with multiple selectable animation modes (Globe, Saturn, Donut, Cube, Galaxy, DNA, Cat, Heart), dynamic screen centering, hardware statistics, and an extensible custom animation plugin system.
+[English](README.md) • [Русский](README.ru.md)
+
+</div>
+
+---
+
+**afetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
 
 ```text
-                               user@hostname
-          =+###%               
-     .+:+*##@@@@@@@@=          OS       │ Arch Linux x86_64
-   +=::+*=***%##%@%%%@%        Host     │ Workstation
-  :+*=*+*=***%##%%%%%%%#       Kernel   │ Linux 6.12.0
- +:+**##**##%%%%@@@@@@%#%      WM       │ Hyprland / driftwm (Wayland)
-·+=+*==*%===*#*########%%*     
-:+:+=+==#*#==#***%###%**%*     CPU      │ AMD Ryzen 7 (16) @ 4.80 GHz
-+:::·+**###%%**#####*#%###     GPU      │ Dedicated GPU
- :·:····=*=**#*+===#%#%#=      Memory   │ 6.42 GiB / 32.00 GiB (20%)
-  ...····++====*#**#**=:       Disk     │ 142.50 GiB / 1000.00 GiB (14%)
-   .....::===*****==*·.        
-     ··.:.:::::::=:··          Packages │ 1250 (pacman)
-          ::::.·               Terminal │ kitty / alacritty
-                               Colors   │ ● ● ● ● ● ● ●
+                                user@hostname
+           =+###%               
+      .+:+*##@@@@@@@@=          OS       │ CachyOS / Arch Linux
+    +=::+*=***%##%@%%%@%        Host     │ B550 AORUS ELITE V2
+   :+*=*+*=***%##%%%%%%%#       Kernel   │ Linux 6.12 / 7.x
+  +:+**##**##%%%%@@@@@@%#%      WM       │ driftwm / Hyprland (Wayland)
+ ·+=+*==*%===*#*########%%*     
+ :+:+=+==#*#==#***%###%**%*     CPU      │ AMD Ryzen 5 / 7
+ +:::·+**###%%**#####*#%###     GPU      │ AMD Radeon Graphics / NVIDIA
+  :·:····=*=**#*+===#%#%#=      Memory   │ 7.20 GiB / 13.50 GiB (53%)
+   ...····++====*#**#**=:       Disk     │ 363.30 GiB / 461.76 GiB (78%)
+    .....::===*****==*·.        
+      ··.:.:::::::=:··          Packages │ 1636 (pacman)
+           ::::.·               Terminal │ kitty / alacritty / foot
+                                Colors   │ ● ● ● ● ● ● ●
 ```
+
+---
+
+## ✨ Key Features
+
+* 🪐 **8 Built-in 3D Mathematical Animations:** Real-time raymarched Globe, Saturn with orbital rings, dual-axis Donut, 3D shaded Cube, spiral Galaxy, DNA double helix, pixel Cat, and pulsing Heart.
+* 🎬 **Full GIF Animation Support:** Drop any `.gif` into your config or pass it directly. Automatically rendered with mathematically corrected 1:1 aspect ratio across all terminals.
+* 🚀 **Native Kitty Graphics Protocol (`--kitty`):** Hardware GPU pixel rendering inside terminal cells. In-place frame replacement (`i=1, C=1`) prevents line wrapping and image stacking.
+* 🧩 **Multiple Render Styles:**
+  * `blocks` *(Default)*: 24-bit Truecolor half-blocks (`▀`), universal across 100% of modern terminals (Kitty, Foot, Alacritty, WezTerm, Ghostty, etc.) with Lanczos scaling and UnsharpMask sharpening.
+  * `quad`: Subpixel 2×2 quadrants (`▘`, `▝`, `▖`, `▗`, `▄`, `▀`, `█`) providing double horizontal detail (56×30 dots) with native terminal alpha transparency.
+  * `kitty`: Pure HD native pixel graphics directly rendered on the GPU.
+  * `ascii`: 10-level grayscale monochrome ASCII art.
+* 🛡️ **Interactive Terminal Safety:** Automatically detects genuine interactive TTYs. Never hangs scripts, never swallows pasted input, and preserves dismiss keystrokes for your shell.
+* 🔍 **Smart Path & Name Resolution:** Run `afetch meowpin`, `afetch cat`, or `afetch ~/Pictures/cat.gif` without extra flags. Automatically searches `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/`, and `~/Downloads/`.
+* 🎨 **Custom Plugin Architecture:** Create your own modes using Python scripts (`~/.config/afetch/modes/*.py`) or plain text ASCII frames (`~/.config/afetch/frames/*.txt`).
 
 ---
 
@@ -164,50 +188,79 @@ Pulsing mathematical 3D wireframe heart curve.
 
 ---
 
-## 🛠️ Usage & Flags
+## 🛠️ Usage & Commands
 
+### Basic Usage
 ```bash
 # Default mode (rotating 3D Globe):
 afetch
 
-# Run a specific animation mode:
-afetch -m saturn
-afetch -m donut
-afetch -m cube
-afetch -m galaxy
-afetch -m dna
-afetch -m cat
-afetch -m heart
+# Run any built-in 3D mode by name:
+afetch saturn
+afetch donut
+afetch cube
+afetch galaxy
+afetch dna
+afetch cat
+afetch heart
 
-# Pick a random animation every time:
+# Pick a random 3D animation mode on launch:
 afetch -r
-# or
-afetch --random
+```
 
-# Static mode (instant 0ms output without animation):
+### GIF Animations
+`afetch` will search for GIF files in your current directory, `~/Пикчи/`, `~/.config/afetch/gifs/`, `~/Pictures/`, or `~/Downloads/`:
+
+```bash
+# Play a GIF by name or path:
+afetch meowpin
+afetch cat.gif
+afetch ~/Пикчи/animation.gif
+
+# Choose rendering engine:
+afetch meowpin --kitty                 # Native HD GPU pixel graphics (Kitty protocol)
+afetch meowpin quad                    # Subpixel 2x2 quadrants (double detail)
+afetch meowpin blocks                  # Sharp Truecolor half-blocks (default)
+afetch meowpin ascii                   # Retro monochrome ASCII
+
+# Static display mode (instant output without animation, like neofetch):
+afetch meowpin --static
+afetch meowpin --kitty --static
 afetch -s
-afetch -s -m cat
+```
 
-# Set custom frame rate (default is 35 FPS):
-afetch --fps 60
+### Options & Flags
+```bash
+afetch [target] [style] [options]
 
-# List all available built-in and custom modes:
-afetch --list-modes
+Positionals:
+  target                Animation mode name, preset, or path/name of a .gif file.
+  style                 Render style: 'blocks', 'quad', 'kitty', or 'ascii'.
+
+Options:
+  -m, --mode MODE       Animation preset name or GIF path.
+  -g, --gif GIF         Explicit path to a GIF file.
+  --gif-style STYLE     Render style: 'blocks' (default), 'quad', 'kitty', 'ascii'.
+  --kitty               Shortcut for '--gif-style kitty'.
+  -s, --static          Static mode (print single frame without animation).
+  -r, --random          Pick a random animation preset.
+  --fps FPS             Animation frame rate (default: 35).
+  --list-modes          List all available modes (built-in, custom, GIFs) and exit.
+  --check-terminal      Run environment and terminal safety diagnostics.
+  --force-terminal      Bypass TTY safety checks.
 ```
 
 ---
 
 ## 🎨 How to Add Your Own Custom Animations
 
-`afetch` includes an extensible custom plugin loader. You can add animations in two ways without modifying the source code:
+`afetch` includes an extensible plugin system. You can add your own animations without modifying the tool's source code:
 
 ### Method 1: Custom Python Script (`~/.config/afetch/modes/*.py`)
 
-Create a Python file inside `~/.config/afetch/modes/`, e.g., `~/.config/afetch/modes/spinner.py`:
+Create a Python script inside `~/.config/afetch/modes/`, e.g., `~/.config/afetch/modes/spinner.py`:
 
 ```python
-import math
-
 def render(angle: float) -> list[str]:
     """
     Called every frame.
@@ -223,14 +276,14 @@ def render(angle: float) -> list[str]:
     return lines
 ```
 
-Now run your custom animation:
+Run your custom script:
 ```bash
-afetch -m spinner
+afetch spinner
 ```
 
 ---
 
-### Method 2: Custom ASCII Frame File (`~/.config/afetch/frames/*.txt`)
+### Method 2: Custom ASCII Frames (`~/.config/afetch/frames/*.txt`)
 
 Create a text file with ASCII frames separated by `---` inside `~/.config/afetch/frames/`, e.g., `~/.config/afetch/frames/bird.txt`:
 
@@ -253,64 +306,69 @@ Create a text file with ASCII frames separated by `---` inside `~/.config/afetch
             `-'
 ```
 
-Now run your custom ASCII frame animation:
+Run your custom frame animation:
 ```bash
-afetch -m bird
+afetch bird
 ```
 
 ---
 
-### Method 3: GIF Animations (`~/.config/afetch/gifs/*.gif` or `--gif`)
+### Method 3: Custom GIFs (`~/.config/afetch/gifs/*.gif`)
 
-You can now drop any `.gif` file directly into `~/.config/afetch/gifs/` or pass it via `--gif`:
+Simply drop any `.gif` into `~/.config/afetch/gifs/` or `~/Пикчи/`:
 
 ```bash
-# Drop a GIF in config directory:
 mkdir -p ~/.config/afetch/gifs
-cp mycat.gif ~/.config/afetch/gifs/
+cp myanimation.gif ~/.config/afetch/gifs/
 
-# Run it directly by name:
-afetch -m mycat
-
-# Or pass a path directly:
-afetch --gif ~/Pictures/animation.gif
-
-# Choose rendering styles:
-afetch -m mycat --kitty                 # Native HD pixel graphics via Kitty protocol (Maximum Quality!)
-afetch -m mycat --gif-style quad        # 2x2 subpixel quadrants (56x30 double resolution)
-afetch -m mycat --gif-style blocks      # Sharp Truecolor half-blocks (Lanczos + UnsharpMask)
-afetch -m mycat --gif-style ascii       # Classic ASCII character style
+afetch myanimation
+afetch myanimation --kitty
 ```
 
 ---
 
-## 🛡️ Interactive Terminal Detection & Safety
+## 🛡️ Interactive Terminal Safety & Diagnostics
 
-`afetch` includes smart terminal detection to prevent crashes, hanging subshells, or swallowed keystrokes when launched inside scripts, automated build tools, IDE consoles, or non-interactive environments:
+`afetch` is engineered to be completely safe for your terminal workflow:
 
-* **Non-interactive TTY guard:** When executed inside pipes, non-TTY subshells, or background processes, animated mode quietly exits immediately (`exit 0`), ensuring commands like `ssh`, `git`, `rsync`, or IDE task runners are never blocked.
-* **Input paste protection:** If input is already buffered in `stdin` (for instance, when commands are pasted immediately on terminal launch), `afetch` exits gracefully without consuming or corrupting the input buffer.
-* **Keystroke preservation:** When you press any key to dismiss `afetch`, the key is preserved in the TTY buffer and passed to your shell without dropping the first character.
-* **Diagnostics:** Run `afetch --check-terminal` to inspect your terminal environment and capability flags.
+* **Non-interactive TTY Guard:** When run inside pipes, background jobs, automated tools, or non-TTY subshells, `afetch` quietly exits (`exit 0`), ensuring tools like `git`, `ssh`, `rsync`, or IDE terminals are never blocked.
+* **Input Paste Protection:** If characters are already buffered in `stdin` (for instance, when commands are pasted on terminal launch), `afetch` immediately exits without consuming or corrupting the user's input stream.
+* **Keystroke Preservation:** When dismiss keys are pressed, the key is preserved in the TTY buffer and delivered intact to your shell without dropping characters.
+* **Diagnostics:** Run `afetch --check-terminal` to verify whether your current environment is a genuine interactive terminal.
 
 ---
 
 ## 🚀 Installation
 
+### Using the Install Script
 ```bash
 git clone https://github.com/ikittohk14-beep/afetch.git
 cd afetch
 ./install.sh
 ```
 
-Or copy manually:
+### Manual Installation
 ```bash
 mkdir -p ~/.local/bin
 cp afetch ~/.local/bin/afetch
 chmod +x ~/.local/bin/afetch
 ```
 
-Ensure `~/.local/bin` is in your `$PATH`.
+Make sure `~/.local/bin` is in your `$PATH`.
+
+### Dependencies
+* **Python 3.10+**
+* **Pillow (PIL)** *(Optional, only required for GIF rendering)*:
+  ```bash
+  # Arch Linux / CachyOS:
+  sudo pacman -S python-pillow
+  
+  # Debian / Ubuntu:
+  sudo apt install python3-pil
+  
+  # Fedora:
+  sudo dnf install python3-pillow
+  ```
 
 ---
 
@@ -319,7 +377,7 @@ Ensure `~/.local/bin` is in your `$PATH`.
 ### Fish Shell (`~/.config/fish/config.fish`)
 ```fish
 if status is-interactive
-    afetch -r # Random 3D animation on start
+    afetch -r # Play random animation on shell launch
 end
 
 alias fetch="afetch"
@@ -338,4 +396,4 @@ alias fetch="afetch"
 
 ## 📄 License
 
-MIT License © 2026 ikittohk14-beep
+MIT License © 2026 [ikittohk14-beep](https://github.com/ikittohk14-beep)
