@@ -147,14 +147,15 @@ CARD_RAW_HEIGHT = 15
 _orig_termios = None
 _cursor_hidden = False
 _kitty_used = False
+_clear_kitty_on_exit = False
 
 
 def _restore_terminal():
-    global _cursor_hidden, _orig_termios, _kitty_used
-    if _kitty_used:
+    global _cursor_hidden, _orig_termios, _kitty_used, _clear_kitty_on_exit
+    if _kitty_used and _clear_kitty_on_exit:
         try:
-            # Clear Kitty graphics protocol images from terminal
-            sys.stdout.write("\033_Ga=d,d=a\033\\")
+            # Clear Kitty graphics animation image (ID 1) from terminal
+            sys.stdout.write("\033_Ga=d,d=i,i=1\033\\")
             sys.stdout.flush()
         except Exception:
             pass
@@ -760,6 +761,7 @@ class GifRenderer:
         width: int = CANVAS_WIDTH,
         height: int = CANVAS_HEIGHT,
         style: str = "blocks",
+        static: bool = False,
     ):
         if not HAS_PIL:
             raise RuntimeError(
@@ -773,6 +775,7 @@ class GifRenderer:
         self.width = width
         self.height = height
         self.style = style.lower()
+        self.static = static
         self.frames: list[list[str]] = []
         self.delays: list[float] = []
         self.start_time: float | None = None
@@ -795,59 +798,131 @@ class GifRenderer:
                     last_frame.alpha_composite(rgba)
 
                 work_img = last_frame.copy()
+                img_w, img_h = work_img.width, work_img.height
+                if img_w <= 0 or img_h <= 0:
+                    continue
+                img_aspect = img_w / float(img_h)
 
                 if self.style == "kitty":
                     # High-DPI native GPU pixel rendering for Kitty terminal
-                    target_w = self.width * 10
-                    target_h = self.height * 20
-                    ratio = min(target_w / work_img.width, target_h / work_img.height)
-                    nw = max(1, int(work_img.width * ratio))
-                    nh = max(1, int(work_img.height * ratio))
-                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
-                    self.frames.append(self._render_kitty(canvas))
+                    # In Kitty character cells: cell height is roughly 2x cell width.
+                    # Fit inside (width, height) cells with proper aspect ratio:
+                    max_w_cells = self.width   # 28
+                    max_h_cells = self.height  # 15
+                    target_ratio_cells = 2.0 * img_aspect
+
+                    if target_ratio_cells >= max_w_cells / float(max_h_cells):
+                        cols = max_w_cells
+                        rows = int(round(cols / target_ratio_cells))
+                    else:
+                        rows = max_h_cells
+                        cols = int(round(rows * target_ratio_cells))
+
+                    cols = max(1, min(max_w_cells, cols))
+                    rows = max(1, min(max_h_cells, rows))
+
+                    # High resolution backing canvas (16px per col, 32px per row)
+                    canvas_w_px = self.width * 16   # 448 px
+                    canvas_h_px = self.height * 32  # 480 px
+
+                    # Scale work_img into (cols * 16, rows * 32)
+                    box_w = cols * 16
+                    box_h = rows * 32
+                    scale = min(box_w / float(img_w), box_h / float(img_h))
+                    w_px = max(1, int(round(img_w * scale)))
+                    h_px = max(1, int(round(img_h * scale)))
+
+                    resized = work_img.resize((w_px, h_px), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (canvas_w_px, canvas_h_px), (0, 0, 0, 0))
+                    ox = (canvas_w_px - w_px) // 2
+                    oy = (canvas_h_px - h_px) // 2
+                    canvas.paste(resized, (ox, oy))
+
+                    img_id = 0 if self.static else 1
+                    self.frames.append(self._render_kitty(canvas, image_id=img_id))
 
                 elif self.style == "quad":
-                    # Subpixel 2x2 quadrants (56x30 resolution: 2x horizontal detail)
-                    target_w = self.width * 2
-                    target_h = self.height * 2
-                    work_img = work_img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=2))
-                    ratio = min(target_w / work_img.width, target_h / work_img.height)
-                    nw = max(1, int(work_img.width * ratio))
-                    nh = max(1, int(work_img.height * ratio))
-                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                    # Subpixel quadrants: 2 dots wide x 2 dots high per character cell
+                    # Dot physical aspect ratio is ~1:2 (width 0.5, height 1.0).
+                    # Physical ratio = (w_dots / h_dots) * 0.5 = img_aspect => w_dots / h_dots = 2.0 * img_aspect
+                    max_w = self.width * 2    # 56 dots
+                    max_h = self.height * 2   # 30 dots
+                    target_ratio = 2.0 * img_aspect
+
+                    if target_ratio >= max_w / float(max_h):
+                        w = max_w
+                        h = int(round(w / target_ratio))
+                    else:
+                        h = max_h
+                        w = int(round(h * target_ratio))
+
+                    w = max(2, min(max_w, w))
+                    h = max(2, min(max_h, h))
+                    w = w if w % 2 == 0 else w - 1
+                    h = h if h % 2 == 0 else h - 1
+
+                    work_img_sharp = work_img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=2))
+                    resized = work_img_sharp.resize((w, h), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (max_w, max_h), (0, 0, 0, 0))
+                    ox = ((max_w - w) // 2) & ~1
+                    oy = ((max_h - h) // 2) & ~1
+                    canvas.paste(resized, (ox, oy))
                     self.frames.append(self._render_quad(canvas))
 
                 elif self.style == "ascii":
-                    target_w = self.width
-                    target_h = self.height
-                    ratio = min(target_w / work_img.width, target_h / work_img.height)
-                    nw = max(1, int(work_img.width * ratio))
-                    nh = max(1, int(work_img.height * ratio))
-                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                    max_w = self.width
+                    max_h = self.height
+                    target_ratio = 2.0 * img_aspect
+
+                    if target_ratio >= max_w / float(max_h):
+                        w = max_w
+                        h = int(round(w / target_ratio))
+                    else:
+                        h = max_h
+                        w = int(round(h * target_ratio))
+
+                    w = max(1, min(max_w, w))
+                    h = max(1, min(max_h, h))
+
+                    resized = work_img.resize((w, h), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (max_w, max_h), (0, 0, 0, 0))
+                    ox = (max_w - w) // 2
+                    oy = (max_h - h) // 2
+                    canvas.paste(resized, (ox, oy))
                     self.frames.append(self._render_ascii(canvas))
 
-                else:  # "blocks"
-                    target_w = self.width
-                    target_h = self.height * 2
-                    # Lanczos + UnsharpMask to eliminate blur
-                    work_img = work_img.filter(ImageFilter.UnsharpMask(radius=1.8, percent=160, threshold=2))
-                    ratio = min(target_w / work_img.width, target_h / work_img.height)
-                    nw = max(1, int(work_img.width * ratio))
-                    nh = max(1, int(work_img.height * ratio))
-                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
-                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                else:  # "blocks" (Truecolor half-blocks)
+                    # 1 dot wide x 2 dots high per character cell.
+                    # Each half-block dot is ~1:1 square.
+                    # Therefore, dots ratio w_dots / h_dots matches original image aspect ratio img_aspect!
+                    max_w = self.width       # 28 dots
+                    max_h = self.height * 2  # 30 dots
+
+                    if img_aspect >= max_w / float(max_h):
+                        w = max_w
+                        h = int(round(w / img_aspect))
+                    else:
+                        h = max_h
+                        w = int(round(h * img_aspect))
+
+                    w = max(1, min(max_w, w))
+                    h = max(2, min(max_h, h))
+                    h = h if h % 2 == 0 else h - 1
+
+                    work_img_sharp = work_img.filter(ImageFilter.UnsharpMask(radius=1.8, percent=160, threshold=2))
+                    resized = work_img_sharp.resize((w, h), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (max_w, max_h), (0, 0, 0, 0))
+                    ox = (max_w - w) // 2
+                    oy = ((max_h - h) // 2) & ~1
+                    canvas.paste(resized, (ox, oy))
                     self.frames.append(self._render_blocks(canvas))
+
+                if self.static:
+                    break
 
         self.total_duration = sum(self.delays) if self.delays else 1.0
 
-    def _render_kitty(self, canvas) -> list[str]:
+    def _render_kitty(self, canvas, image_id: int = 1) -> list[str]:
         global _kitty_used
         _kitty_used = True
         buf = io.BytesIO()
@@ -855,10 +930,16 @@ class GifRenderer:
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         chunks = [b64[i : i + 4096] for i in range(0, len(b64), 4096)]
         seq = []
+        id_part = f",i={image_id}" if image_id else ""
         for i, c in enumerate(chunks):
             m = 1 if i < len(chunks) - 1 else 0
             if i == 0:
-                seq.append(f"\033_Ga=T,f=100,c={self.width},r={self.height},q=2,m={m};{c}\033\\")
+                # a=T: transmit and display
+                # f=100: PNG format
+                # C=1: Do NOT move cursor (keeps cursor aligned with card layout)
+                # c, r: placement width and height in terminal cells
+                # q=2: quiet mode (suppress terminal responses)
+                seq.append(f"\033_Ga=T,f=100{id_part},C=1,c={self.width},r={self.height},q=2,m={m};{c}\033\\")
             else:
                 seq.append(f"\033_Gm={m};{c}\033\\")
         kitty_packet = "".join(seq)
@@ -886,14 +967,36 @@ class GifRenderer:
                     row.append(" ")
                     continue
 
-                lums = [int(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) if p[3] >= 32 else -1 for p in pts]
-                valid_lums = [l for l in lums if l >= 0]
-                mid_lum = sum(valid_lums) / len(valid_lums)
+                # If some pixels are transparent, keep background default (\033[49m)
+                if len(opaques) < 4:
+                    avg_fg = (
+                        sum(p[0] for p in opaques) // len(opaques),
+                        sum(p[1] for p in opaques) // len(opaques),
+                        sum(p[2] for p in opaques) // len(opaques),
+                    )
+                    mask = 0
+                    if tl[3] >= 32: mask |= 8
+                    if tr[3] >= 32: mask |= 4
+                    if bl[3] >= 32: mask |= 2
+                    if br[3] >= 32: mask |= 1
+                    ch = QUADRANTS[mask]
+                    code = ""
+                    if cur_bg is not None:
+                        code += "\033[49m"
+                        cur_bg = None
+                    if cur_fg != avg_fg:
+                        code += f"\033[38;2;{avg_fg[0]};{avg_fg[1]};{avg_fg[2]}m"
+                        cur_fg = avg_fg
+                    row.append(code + ch)
+                    continue
+
+                lums = [int(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) for p in pts]
+                mid_lum = sum(lums) / 4.0
 
                 fg_pts = [p for p, l in zip(pts, lums) if l >= mid_lum]
-                bg_pts = [p for p, l in zip(pts, lums) if 0 <= l < mid_lum]
+                bg_pts = [p for p, l in zip(pts, lums) if l < mid_lum]
                 if not fg_pts:
-                    fg_pts = opaques
+                    fg_pts = pts
                 if not bg_pts:
                     bg_pts = fg_pts
 
@@ -1015,9 +1118,38 @@ class GifRenderer:
         return self.frames[-1]
 
 
+def resolve_gif_path(target: str | Path | None) -> Path | None:
+    """Resolve GIF file from path, name, or common user folders (~/.config/afetch/gifs, ~/Пикчи, ~/Pictures)."""
+    if not target:
+        return None
+    p = Path(target).expanduser()
+    if p.is_file():
+        return p
+    p_gif = Path(str(target) + ".gif").expanduser()
+    if p_gif.is_file():
+        return p_gif
+    # Search ~/.config/afetch/gifs/
+    cfg_gifs = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch" / "gifs"
+    for candidate in [cfg_gifs / target, cfg_gifs / f"{target}.gif"]:
+        if candidate.is_file():
+            return candidate
+    # Search common image folders (~/Пикчи/, ~/Pictures/, ~/Загрузки/, ~/Downloads/)
+    for folder in [
+        Path.home() / "Пикчи",
+        Path.home() / "Pictures",
+        Path.home() / "Загрузки",
+        Path.home() / "Downloads",
+    ]:
+        if folder.is_dir():
+            for candidate in [folder / target, folder / f"{target}.gif"]:
+                if candidate.is_file():
+                    return candidate
+    return None
+
+
 # ── Custom Animation Discovery System ──────────────────────
 
-def discover_custom_modes(gif_style: str = "blocks") -> dict:
+def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> dict:
     """Discover user-created animation modes and GIFs from ~/.config/afetch/."""
     custom = {}
     config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch"
@@ -1069,15 +1201,15 @@ def discover_custom_modes(gif_style: str = "blocks") -> dict:
         for gif_file in gifs_dir.glob("*.gif"):
             try:
                 anim_name = gif_file.stem
-                def make_gif_renderer(gpath, gstyle):
+                def make_gif_renderer(gpath, gstyle, gstatic):
                     _cached = None
                     def _renderer(angle: float = 0.0):
                         nonlocal _cached
                         if _cached is None:
-                            _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle)
+                            _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle, static=gstatic)
                         return _cached(angle)
                     return _renderer
-                renderer_fn = make_gif_renderer(gif_file, gif_style)
+                renderer_fn = make_gif_renderer(gif_file, gif_style, static)
                 custom[anim_name] = renderer_fn
                 custom[gif_file.name] = renderer_fn
             except Exception:
@@ -1129,7 +1261,8 @@ def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
 
 def run_animated(info: dict, render_fn, fps: int = 35):
     """Run continuous 3D rotation until any key is pressed or Ctrl+C."""
-    global _cursor_hidden, _orig_termios
+    global _cursor_hidden, _orig_termios, _clear_kitty_on_exit
+    _clear_kitty_on_exit = True
 
     # Safety Guard: If input is already waiting in stdin (e.g. pasted commands or automated input),
     # immediately exit so we never consume or corrupt the user's input stream!
@@ -1189,10 +1322,23 @@ def main():
         description="afetch — Minimalist animated 3D ASCII and GIF system information fetch."
     )
     parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Optional positional target: mode preset name, or path/name of a .gif file.",
+    )
+    parser.add_argument(
+        "style_pos",
+        nargs="?",
+        choices=["blocks", "quad", "kitty", "ascii", None],
+        default=None,
+        help="Optional positional style: 'blocks', 'quad', 'kitty', or 'ascii'.",
+    )
+    parser.add_argument(
         "-m",
         "--mode",
         type=str,
-        default="globe",
+        default=None,
         help="Animation preset, custom mode name, or path to a .gif file (default: globe).",
     )
     parser.add_argument(
@@ -1205,8 +1351,8 @@ def main():
     parser.add_argument(
         "--gif-style",
         choices=["blocks", "quad", "kitty", "ascii"],
-        default="quad",
-        help="Render style for GIF: 'quad' (subpixel quadrants, default), 'kitty' (native HD pixel graphics), 'blocks' (half-blocks), or 'ascii'.",
+        default="blocks",
+        help="Render style for GIF: 'blocks' (Truecolor half-blocks, universal default), 'quad' (subpixel quadrants), 'kitty' (native HD GPU pixel graphics), or 'ascii'.",
     )
     parser.add_argument(
         "--kitty",
@@ -1248,6 +1394,10 @@ def main():
     )
     args = parser.parse_args()
 
+    # Determine gif style
+    if args.style_pos:
+        args.gif_style = args.style_pos
+
     if args.kitty:
         args.gif_style = "kitty"
 
@@ -1264,7 +1414,7 @@ def main():
         print(f"  • Pillow (PIL) for GIF : {'AVAILABLE' if diag['has_pil'] else 'NOT INSTALLED'}")
         sys.exit(0 if diag["real_interactive_tty"] else 1)
 
-    custom_modes = discover_custom_modes(gif_style=args.gif_style)
+    custom_modes = discover_custom_modes(gif_style=args.gif_style, static=args.static)
     all_modes = {**BUILTIN_MODES, **custom_modes}
 
     if args.list_modes:
@@ -1283,34 +1433,44 @@ def main():
                 print(f"  • {cm}")
         return
 
-    render_fn = None
+    # Resolve target from positional or flags
+    chosen_mode = "globe"
+    gif_file = None
 
-    # Option 1: Direct --gif argument
     if args.gif:
-        gif_candidate = Path(args.gif).expanduser()
-        if not gif_candidate.is_file():
-            # Check ~/.config/afetch/gifs/<name>
-            cfg_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch" / "gifs"
-            if (cfg_dir / f"{args.gif}.gif").is_file():
-                gif_candidate = cfg_dir / f"{args.gif}.gif"
-            elif (cfg_dir / args.gif).is_file():
-                gif_candidate = cfg_dir / args.gif
+        gif_file = resolve_gif_path(args.gif)
+        if not gif_file:
+            print(f"afetch: GIF file not found: {args.gif}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        target_cand = args.target or args.mode
+        if target_cand:
+            # Handle if style was passed as first positional (e.g. afetch kitty)
+            if target_cand in ["blocks", "quad", "kitty", "ascii"]:
+                args.gif_style = target_cand
+                target_cand = args.mode or "globe"
+
+            # Check if target resolves to a GIF file
+            resolved_gif = resolve_gif_path(target_cand)
+            if resolved_gif:
+                gif_file = resolved_gif
             else:
-                print(f"afetch: GIF file not found: {args.gif}", file=sys.stderr)
-                sys.exit(1)
-        render_fn = GifRenderer(gif_candidate, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=args.gif_style)
+                chosen_mode = target_cand.lower()
+        elif args.mode:
+            chosen_mode = args.mode.lower()
 
-    # Option 2: -m pointing directly to a .gif file
-    elif args.mode and (args.mode.lower().endswith(".gif") or Path(args.mode).expanduser().is_file()):
-        file_candidate = Path(args.mode).expanduser()
-        if file_candidate.is_file() and (file_candidate.suffix.lower() == ".gif" or file_candidate.name.endswith(".gif")):
-            render_fn = GifRenderer(file_candidate, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=args.gif_style)
-
-    if render_fn is None:
-        mode_name = args.mode.lower()
+    if gif_file:
+        render_fn = GifRenderer(
+            gif_file,
+            width=CANVAS_WIDTH,
+            height=CANVAS_HEIGHT,
+            style=args.gif_style,
+            static=args.static,
+        )
+    else:
         if args.random:
-            mode_name = random.choice(list(all_modes.keys()))
-        render_fn = all_modes.get(mode_name, render_globe)
+            chosen_mode = random.choice(list(all_modes.keys()))
+        render_fn = all_modes.get(chosen_mode, render_globe)
 
     info = fetch_system_info()
 
