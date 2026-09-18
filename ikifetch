@@ -28,6 +28,7 @@ import os
 from pathlib import Path
 import platform
 import random
+import re
 import select
 import shutil
 import signal
@@ -39,6 +40,7 @@ import tty
 
 import base64
 import io
+import tempfile
 
 # Optional Pillow integration for GIF rendering
 try:
@@ -192,100 +194,202 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 
 
-# ── System Information Fetcher ──────────────────────────────
-def fetch_system_info() -> dict:
-    """Retrieve system information rapidly with fastfetch JSON and stdlib fallback."""
-    user = os.environ.get("USER", "user")
-    host = platform.node() or "host"
-    data = {
-        "user_host": f"{user}@{host}",
-        "os": f"{platform.system()} {platform.machine()}",
-        "host": "Desktop",
-        "kernel": f"{platform.system()} {platform.release()}",
-        "wm": os.environ.get("XDG_CURRENT_DESKTOP") or os.environ.get("DESKTOP_SESSION") or "Wayland",
-        "cpu": platform.processor() or "CPU",
-        "gpu": "GPU",
-        "memory": "Memory",
-        "disk": "Disk",
-        "packages": "Packages",
-        "terminal": os.environ.get("TERM_PROGRAM") or os.environ.get("TERM") or "terminal",
-    }
+# ── Config & Module Layout System (Fastfetch Compatible) ─────
 
-    # Fastfetch JSON integration (<20ms)
+def strip_ansi(s: str) -> str:
+    """Strip ANSI escape sequences from a string."""
+    return re.sub(r"\033(?:\[[0-9;?]*[a-zA-Z]|_[^\\\033]*\033\\)", "", s)
+
+
+def get_visible_width(line: str) -> int:
+    """Calculate visible character cell width, accounting for cursor column jumps."""
+    m = re.search(r"\033\[(\d+)G(.*)", line)
+    if m:
+        col = int(m.group(1))
+        rest = re.sub(r"\033(?:\[[0-9;?]*[a-zA-Z]|_[^\\\033]*\033\\)", "", m.group(2))
+        return col + len(rest)
+    return len(strip_ansi(line))
+
+
+def adjust_cha(line: str, offset: int) -> str:
+    """Adjust absolute cursor column codes (\033[...G) relative to left margin."""
+    return re.sub(r"\033\[(\d+)G", lambda m: f"\033[{offset + int(m.group(1))}G", line)
+
+
+def resolve_config_info(args) -> list[str]:
+    """Retrieve system information lines based on user config.
+
+    Out of the box, ikifetch is clean and displays ONLY the animated art / GIF.
+    Users can configure modules by placing a fastfetch-compatible config in:
+      • ~/.config/ikifetch/config.jsonc (or config.json)
+      • Passing -c / --config <path>
+      • Passing -ff / --fastfetch to use ~/.config/fastfetch/config.jsonc
+    """
+    if getattr(args, "no_info", False):
+        return []
+
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    cfg_file = None
+
+    # 1. Explicit --config flag
+    if getattr(args, "config", None):
+        cand = Path(args.config).expanduser().resolve()
+        if cand.is_file():
+            cfg_file = cand
+
+    # 2. --fastfetch flag
+    elif getattr(args, "fastfetch", False):
+        for ff_name in ["config.jsonc", "config.json"]:
+            cand = xdg_config / "fastfetch" / ff_name
+            if cand.is_file():
+                cfg_file = cand
+                break
+
+    # 3. Default ikifetch config directory
+    else:
+        for ik_name in ["config.jsonc", "config.json"]:
+            cand = xdg_config / "ikifetch" / ik_name
+            if cand.is_file():
+                cfg_file = cand
+                break
+
+    # If no config file is configured/found, ikifetch remains purely focused on art!
+    if not cfg_file:
+        return []
+
+    # Execute fastfetch with user config and no logo if fastfetch is installed
+    target_cfg = cfg_file
+    tmp_link = None
+    if cfg_file.suffix not in [".json", ".jsonc"]:
+        try:
+            tmp_link = Path(tempfile.gettempdir()) / f"ikifetch_cfg_{os.getpid()}.jsonc"
+            if tmp_link.exists() or tmp_link.is_symlink():
+                tmp_link.unlink()
+            tmp_link.symlink_to(cfg_file)
+            target_cfg = tmp_link
+        except Exception:
+            pass
+
     try:
         proc = subprocess.run(
             [
                 "fastfetch",
-                "-s",
-                "Title:OS:Host:Kernel:WM:CPU:GPU:Memory:Disk:Packages:Terminal",
-                "--format",
-                "json",
+                "-c",
+                str(target_cfg),
+                "-l",
+                "none",
+                "--pipe",
+                "false",
             ],
             capture_output=True,
             text=True,
-            timeout=1.2,
+            timeout=1.5,
             check=False,
         )
-        if proc.returncode == 0:
-            parsed = json.loads(proc.stdout)
-            for item in parsed:
-                mtype = item.get("type", "").lower()
-                res = item.get("result", {})
-                if mtype == "title":
-                    u = res.get("userName") or user
-                    h = res.get("hostName") or host
-                    data["user_host"] = f"{u}@{h}"
-                elif mtype == "os":
-                    name = res.get("prettyName") or res.get("name") or "Linux"
-                    arch = res.get("architecture") or ""
-                    data["os"] = f"{name} {arch}".strip()
-                elif mtype == "host":
-                    data["host"] = res.get("name") or res.get("family") or "Desktop"
-                elif mtype == "kernel":
-                    kname = res.get("name", "Linux")
-                    rel = res.get("release", "")
-                    data["kernel"] = f"{kname} {rel}".strip()
-                elif mtype == "wm":
-                    pname = res.get("prettyName") or res.get("processName") or "driftwm"
-                    proto = res.get("protocolName", "")
-                    data["wm"] = f"{pname} ({proto})" if proto else pname
-                elif mtype == "cpu":
-                    cname = res.get("cpu", "CPU")
-                    cores = res.get("cores", {}).get("logical")
-                    freq = res.get("frequency", {}).get("max", 0) / 1000
-                    if cores and freq > 0:
-                        data["cpu"] = f"{cname} ({cores}) @ {freq:.2f} GHz"
-                    else:
-                        data["cpu"] = cname
-                elif mtype == "gpu":
-                    if isinstance(res, list) and res:
-                        gname = res[0].get("name", "GPU")
-                        data["gpu"] = gname.split(" / ")[0]
-                elif mtype == "memory":
-                    used_gb = res.get("used", 0) / (1024**3)
-                    tot_gb = res.get("total", 0) / (1024**3)
-                    pct = int(used_gb / tot_gb * 100) if tot_gb else 0
-                    data["memory"] = f"{used_gb:.2f} GiB / {tot_gb:.2f} GiB ({pct}%)"
-                elif mtype == "disk":
-                    if isinstance(res, list) and res:
-                        d0 = res[0].get("bytes", {})
-                        u_gb = d0.get("used", 0) / (1024**3)
-                        t_gb = d0.get("total", 0) / (1024**3)
-                        pct = int(u_gb / t_gb * 100) if t_gb else 0
-                        data["disk"] = f"{u_gb:.2f} GiB / {t_gb:.2f} GiB ({pct}%)"
-                elif mtype == "packages":
-                    pac = res.get("pacman")
-                    data["packages"] = f"{pac} (pacman)" if pac else str(res.get("all", ""))
-                elif mtype == "terminal":
-                    pname = res.get("prettyName") or res.get("processName") or "kitty"
-                    if "antigravity" in pname:
-                        pname = "kitty"
-                    ver = res.get("version", "")
-                    data["terminal"] = f"{pname} {ver}".strip() if ver else pname
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.splitlines()
     except Exception:
         pass
+    finally:
+        if tmp_link and (tmp_link.exists() or tmp_link.is_symlink()):
+            try:
+                tmp_link.unlink()
+            except Exception:
+                pass
 
-    return data
+    # Native fallback if fastfetch binary is not installed
+    try:
+        raw_text = cfg_file.read_text(encoding="utf-8")
+        cleaned = re.sub(r"//.*", "", raw_text)
+        cleaned = re.sub(r"/\*.*?\*/", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
+        cfg_data = json.loads(cleaned)
+        return _render_native_modules(cfg_data.get("modules", []))
+    except Exception:
+        return []
+
+
+def _render_native_modules(modules: list) -> list[str]:
+    """Lightweight fallback renderer for fastfetch modules without fastfetch binary."""
+    user = os.environ.get("USER", "user")
+    host = platform.node() or "host"
+    lines = []
+
+    for mod in modules:
+        if isinstance(mod, str):
+            mtype = mod.lower()
+            mopt = {}
+        elif isinstance(mod, dict):
+            mtype = mod.get("type", "").lower()
+            mopt = mod
+        else:
+            continue
+
+        if mtype == "break":
+            lines.append("")
+        elif mtype == "title":
+            lines.append(f"\033[1;38;2;194;198;214m{user}@{host}\033[0m")
+        elif mtype == "separator":
+            lines.append(mopt.get("string", "─") * 18)
+        elif mtype == "os":
+            os_name = "Linux"
+            try:
+                with open("/etc/os-release") as f:
+                    for l in f:
+                        if l.startswith("PRETTY_NAME="):
+                            os_name = l.split("=", 1)[1].strip('"\n')
+                            break
+            except Exception:
+                pass
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'OS'):<10}\033[0m {os_name}")
+        elif mtype == "kernel":
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'Kernel'):<10}\033[0m {platform.system()} {platform.release()}")
+        elif mtype == "wm":
+            wm = os.environ.get("XDG_CURRENT_DESKTOP") or os.environ.get("DESKTOP_SESSION") or "Wayland"
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'WM'):<10}\033[0m {wm}")
+        elif mtype == "shell":
+            sh = Path(os.environ.get("SHELL", "sh")).name
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'Shell'):<10}\033[0m {sh}")
+        elif mtype == "memory":
+            mem_str = "Memory"
+            try:
+                with open("/proc/meminfo") as f:
+                    mem_data = {l.split(":")[0].strip(): int(l.split(":")[1].split()[0]) for l in f if ":" in l}
+                    tot = mem_data.get("MemTotal", 0) / (1024 * 1024)
+                    avail = mem_data.get("MemAvailable", 0) / (1024 * 1024)
+                    used = max(tot - avail, 0)
+                    pct = int(used / tot * 100) if tot else 0
+                    mem_str = f"{used:.2f} GiB / {tot:.2f} GiB ({pct}%)"
+            except Exception:
+                pass
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'Memory'):<10}\033[0m {mem_str}")
+        elif mtype == "cpu":
+            cpu_name = platform.processor() or "CPU"
+            try:
+                with open("/proc/cpuinfo") as f:
+                    for l in f:
+                        if "model name" in l:
+                            cpu_name = l.split(":", 1)[1].strip()
+                            break
+            except Exception:
+                pass
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'CPU'):<10}\033[0m {cpu_name}")
+        elif mtype == "disk":
+            disk_str = "Disk"
+            try:
+                du = shutil.disk_usage("/")
+                u_gb = du.used / (1024**3)
+                t_gb = du.total / (1024**3)
+                pct = int(u_gb / t_gb * 100) if t_gb else 0
+                disk_str = f"{u_gb:.2f} GiB / {t_gb:.2f} GiB ({pct}%)"
+            except Exception:
+                pass
+            lines.append(f"\033[38;2;133;154;234m{mopt.get('key', 'Disk'):<10}\033[0m {disk_str}")
+        elif mtype == "colors":
+            dots = " ".join([f"\033[{c}m●\033[0m" for c in ["31", "32", "33", "34", "35", "36", "37"]])
+            lines.append(dots)
+
+    return lines
 
 
 # ── Built-in 3D Mathematical Renderers ─────────────────────
@@ -1237,29 +1341,6 @@ def discover_custom_modes(gif_style: str = "blocks", static: bool = False) -> di
 
 # ── Card Composition & Terminal Centering ───────────────────
 
-def build_info_lines(data: dict) -> list[str]:
-    """Format the right-side information card matching the minimalist layout."""
-    uh = data["user_host"]
-    header_pad = " " * 12
-    return [
-        f"{header_pad}{COLOR_BOLD}{COLOR_TEXT}{uh}{COLOR_RESET}",
-        "",
-        f"{COLOR_DIM}{'OS':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['os']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Host':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['host']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Kernel':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['kernel']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'WM':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['wm']}{COLOR_RESET}",
-        "",
-        f"{COLOR_DIM}{'CPU':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['cpu']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'GPU':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['gpu']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Memory':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['memory']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Disk':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['disk']}{COLOR_RESET}",
-        "",
-        f"{COLOR_DIM}{'Packages':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['packages']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Terminal':<9}{COLOR_DIVIDER}│ {COLOR_TEXT}{data['terminal']}{COLOR_RESET}",
-        f"{COLOR_DIM}{'Colors':<9}{COLOR_DIVIDER}│ {DOTS}",
-    ]
-
-
 def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
     """Compose the card centered dynamically in the terminal window."""
     try:
@@ -1267,19 +1348,31 @@ def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
     except Exception:
         cols, rows = 80, 24
 
-    card_height = len(art_lines)
+    art_height = len(art_lines)
+    card_height = max(art_height, len(info_lines)) if info_lines else art_height
     top_pad = max((rows - card_height) // 2, 0)
-    left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
 
     lines = [""] * top_pad
-    for i in range(card_height):
-        art = art_lines[i]
-        info = info_lines[i] if i < len(info_lines) else ""
-        lines.append(f"{left_pad}{art}    {info}")
+    if info_lines:
+        max_info_w = max((get_visible_width(l) for l in info_lines), default=0)
+        total_width = CANVAS_WIDTH + 4 + max_info_w
+        left_pad = " " * max((cols - total_width) // 2, 0)
+        info_col = len(left_pad) + CANVAS_WIDTH + 4
+
+        for i in range(card_height):
+            art = art_lines[i] if i < art_height else " " * CANVAS_WIDTH
+            raw_info = info_lines[i] if i < len(info_lines) else ""
+            adj_info = adjust_cha(raw_info, info_col)
+            lines.append(f"{left_pad}{art}    {adj_info}")
+    else:
+        left_pad = " " * max((cols - CANVAS_WIDTH) // 2, 0)
+        for art in art_lines:
+            lines.append(f"{left_pad}{art}")
+
     return "\n".join(lines)
 
 
-def run_animated(info: dict, render_fn, fps: int = 35):
+def run_animated(info_lines: list[str], render_fn, fps: int = 35):
     """Run continuous 3D rotation with bulletproof resize and reflow protection."""
     global _cursor_hidden, _orig_termios, _clear_kitty_on_exit
     _clear_kitty_on_exit = True
@@ -1293,7 +1386,6 @@ def run_animated(info: dict, render_fn, fps: int = 35):
     if not is_real_interactive_terminal():
         return
 
-    info_lines = build_info_lines(info)
     frame_delay = 1.0 / max(fps, 1)
 
     try:
@@ -1356,22 +1448,34 @@ def run_animated(info: dict, render_fn, fps: int = 35):
                 sys.stdout.flush()
 
             art_lines = render_fn(angle)
-            card_height = len(art_lines)
+            art_height = len(art_lines)
+            card_height = max(art_height, len(info_lines)) if info_lines else art_height
             top_pad = max((rows - card_height) // 2, 0)
             start_row = top_pad + 1  # 1-indexed row in terminal
-            left_pad = " " * max((cols - CARD_RAW_WIDTH) // 2, 0)
 
-            # Draw using absolute row coordinates (\033[{row};1H).
-            # This completely avoids '\n' scrolling and eliminates duplicate/reflow artifacts!
             frame_buf = []
-            for i in range(card_height):
-                target_row = start_row + i
-                if target_row > rows:
-                    break  # Never write past the bottom row of terminal!
-                art = art_lines[i]
-                info = info_lines[i] if i < len(info_lines) else ""
-                # Move directly to target_row, column 1, clear entire line (\033[2K), and output row
-                frame_buf.append(f"\033[{target_row};1H\033[2K{left_pad}{art}    {info}")
+            if info_lines:
+                max_info_w = max((get_visible_width(l) for l in info_lines), default=0)
+                total_width = CANVAS_WIDTH + 4 + max_info_w
+                left_pad = " " * max((cols - total_width) // 2, 0)
+                info_col = len(left_pad) + CANVAS_WIDTH + 4
+
+                for i in range(card_height):
+                    target_row = start_row + i
+                    if target_row > rows:
+                        break  # Never write past the bottom row of terminal!
+                    art = art_lines[i] if i < art_height else " " * CANVAS_WIDTH
+                    raw_info = info_lines[i] if i < len(info_lines) else ""
+                    adj_info = adjust_cha(raw_info, info_col)
+                    frame_buf.append(f"\033[{target_row};1H\033[2K{left_pad}{art}    {adj_info}")
+            else:
+                left_pad = " " * max((cols - CANVAS_WIDTH) // 2, 0)
+                for i in range(art_height):
+                    target_row = start_row + i
+                    if target_row > rows:
+                        break
+                    art = art_lines[i]
+                    frame_buf.append(f"\033[{target_row};1H\033[2K{left_pad}{art}")
 
             last_rendered_bottom = min(start_row + card_height - 1, rows)
 
@@ -1474,6 +1578,26 @@ def main():
         action="store_true",
         help="Force animation even if terminal safety checks detect a non-interactive shell.",
     )
+    parser.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help="Path to custom fastfetch/ikifetch config.jsonc to display system information.",
+    )
+    parser.add_argument(
+        "-ff",
+        "--fastfetch",
+        action="store_true",
+        help="Use default ~/.config/fastfetch/config.jsonc if present.",
+    )
+    parser.add_argument(
+        "--no-info",
+        "--art-only",
+        dest="no_info",
+        action="store_true",
+        help="Display only the 3D art or GIF animation without any system info modules.",
+    )
     args = parser.parse_args()
 
     # Determine gif style
@@ -1554,11 +1678,10 @@ def main():
             chosen_mode = random.choice(list(all_modes.keys()))
         render_fn = all_modes.get(chosen_mode, render_globe)
 
-    info = fetch_system_info()
+    info_lines = resolve_config_info(args)
 
     if args.static:
         art = render_fn(1.2)
-        info_lines = build_info_lines(info)
         print(compose_centered_card(art, info_lines))
         return
 
@@ -1568,7 +1691,7 @@ def main():
     if not args.force_terminal and not is_real_interactive_terminal():
         sys.exit(0)
 
-    run_animated(info, render_fn, fps=args.fps)
+    run_animated(info_lines, render_fn, fps=args.fps)
 
 
 if __name__ == "__main__":

@@ -10,30 +10,33 @@
 
 ---
 
-**ikifetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and an extensible custom animation plugin architecture.
+**ikifetch** is a fast, aesthetically crafted CLI fetch tool. It combines mathematical 3D raymarching engines, animated GIF playback with GPU hardware acceleration, smart terminal detection, dynamic screen centering, and a modular system info architecture.
+
+**By default, `ikifetch` is clean and distraction-free:** it renders pure, perfectly centered 3D animations or GIFs without clutter. When you want system specs alongside your art, simply enable your preferred modules using your own fastfetch config or custom JSON schema.
 
 ```text
-                                user@hostname
-           =+###%               
-      .+:+*##@@@@@@@@=          OS       │ CachyOS / Arch Linux
-    +=::+*=***%##%@%%%@%        Host     │ B550 AORUS ELITE V2
-   :+*=*+*=***%##%%%%%%%#       Kernel   │ Linux 6.12 / 7.x
-  +:+**##**##%%%%@@@@@@%#%      WM       │ driftwm / Hyprland (Wayland)
- ·+=+*==*%===*#*########%%*     
- :+:+=+==#*#==#***%###%**%*     CPU      │ AMD Ryzen 5 / 7
- +:::·+**###%%**#####*#%###     GPU      │ AMD Radeon Graphics / NVIDIA
-  :·:····=*=**#*+===#%#%#=      Memory   │ 7.20 GiB / 13.50 GiB (53%)
-   ...····++====*#**#**=:       Disk     │ 363.30 GiB / 461.76 GiB (78%)
-    .....::===*****==*·.        
-      ··.:.:::::::=:··          Packages │ 1636 (pacman)
-           ::::.·               Terminal │ kitty / alacritty / foot
-                                Colors   │ ● ● ● ● ● ● ●
+                                 user@hostname
+            =+###%               ─────────────
+       .+:+*##@@@@@@@@=           OS      │ Arch Linux / CachyOS
+     +=::+*=***%##%@%%%@%        󰌽 Kernel  │ Linux 6.x / 7.x
+    :+*=*+*=***%##%%%%%%%#        WM      │ driftwm / Hyprland (Wayland)
+   +:+**##**##%%%%@@@@@@%#%       Shell   │ fish / zsh / bash
+  ·+=+*==*%===*#*########%%*     󰔚 Uptime  │ 6 hours, 12 mins
+  :+:+=+==#*#==#***%###%**%*      Memory  │ 7.20 GiB / 13.50 GiB
+  +:::·+**###%%**#####*#%###     
+   :·:····=*=**#*+===#%#%#=      ● ● ● ● ● ● ● ●
+    ...····++====*#**#**=:       
+     .....::===*****==*·.        
+       ··.:.:::::::=:··          
+            ::::.·               
 ```
 
 ---
 
 ## ✨ Key Features
 
+* 💎 **Clean & Focused by Default:** Out of the box, `ikifetch` centers beautiful 3D animations and GIFs right in your terminal window without dumping unwanted hardware specs.
+* ⚙️ **Modular System Information:** Fully compatible with `fastfetch` configs! Use `ikifetch -ff`, supply a custom `-c path/to/config.jsonc`, or drop your setup in `~/.config/ikifetch/config.jsonc`.
 * 🪐 **8 Built-in 3D Mathematical Animations:** Real-time raymarched Globe, Saturn with orbital rings, dual-axis Donut, 3D shaded Cube, spiral Galaxy, DNA double helix, pixel Cat, and pulsing Heart.
 * 🎬 **Full GIF Animation Support:** Drop any `.gif` into your config or pass it directly. Automatically rendered with mathematically corrected 1:1 aspect ratio across all terminals.
 * 🚀 **Native Kitty Graphics Protocol (`--kitty`):** Hardware GPU pixel rendering inside terminal cells. In-place frame replacement (`i=1, C=1`) prevents line wrapping and image stacking.
@@ -241,10 +244,50 @@ Options:
   --kitty               Shortcut for '--gif-style kitty'.
   -s, --static          Static mode (print single frame without animation).
   -r, --random          Pick a random animation preset.
+  -ff, --fastfetch      Display system info from ~/.config/fastfetch/config.jsonc.
+  -c, --config PATH     Display system info using a custom fastfetch/ikifetch config.
+  --no-info, --art-only Render animation only (ignore any detected config).
   --fps FPS             Animation frame rate (default: 35).
   --list-modes          List all available modes (built-in, custom, GIFs) and exit.
   --check-terminal      Run environment and terminal safety diagnostics.
   --force-terminal      Bypass TTY safety checks.
+```
+
+---
+
+## ⚙️ System Information Configuration
+
+Out of the box, `ikifetch` acts as a clean alternative to fastfetch: **no unwanted hardware tables are forced on your screen**.
+
+If you'd like to show system information beside your animation, you can configure it easily:
+
+### 1. Using an existing Fastfetch configuration
+If you already use `fastfetch`, simply pass `-ff` or `--fastfetch`:
+```bash
+ikifetch -ff
+ikifetch cat.gif -ff
+```
+
+### 2. Dedicated `ikifetch` Configuration
+Create `~/.config/ikifetch/config.jsonc` (an example is included in the repository as `config.jsonc.example`):
+```bash
+mkdir -p ~/.config/ikifetch
+cp config.jsonc.example ~/.config/ikifetch/config.jsonc
+```
+Once this file exists, `ikifetch` will automatically render your customized modules beside the animation.
+
+### 3. Custom Config Path
+You can point to any config file with `-c` or `--config`:
+```bash
+ikifetch -c ~/.config/my-theme/fetch.jsonc
+```
+
+### 4. Pure Art Mode
+To suppress system info at any time:
+```bash
+ikifetch --no-info
+# or
+ikifetch --art-only
 ```
 
 ---
