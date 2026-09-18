@@ -260,6 +260,39 @@ afetch -m bird
 
 ---
 
+### Method 3: GIF Animations (`~/.config/afetch/gifs/*.gif` or `--gif`)
+
+You can now drop any `.gif` file directly into `~/.config/afetch/gifs/` or pass it via `--gif`:
+
+```bash
+# Drop a GIF in config directory:
+mkdir -p ~/.config/afetch/gifs
+cp mycat.gif ~/.config/afetch/gifs/
+
+# Run it directly by name:
+afetch -m mycat
+
+# Or pass a path directly:
+afetch --gif ~/Pictures/animation.gif
+
+# Choose between Truecolor half-blocks (default) or ASCII character style:
+afetch --gif ~/Pictures/animation.gif --gif-style blocks
+afetch --gif ~/Pictures/animation.gif --gif-style ascii
+```
+
+---
+
+## 🛡️ Interactive Terminal Detection & Safety
+
+`afetch` includes smart terminal detection to prevent crashes, hanging subshells, or swallowed keystrokes when launched inside scripts, automated build tools, IDE consoles, or non-interactive environments:
+
+* **Non-interactive TTY guard:** When executed inside pipes, non-TTY subshells, or background processes, animated mode quietly exits immediately (`exit 0`), ensuring commands like `ssh`, `git`, `rsync`, or IDE task runners are never blocked.
+* **Input paste protection:** If input is already buffered in `stdin` (for instance, when commands are pasted immediately on terminal launch), `afetch` exits gracefully without consuming or corrupting the input buffer.
+* **Keystroke preservation:** When you press any key to dismiss `afetch`, the key is preserved in the TTY buffer and passed to your shell without dropping the first character.
+* **Diagnostics:** Run `afetch --check-terminal` to inspect your terminal environment and capability flags.
+
+---
+
 ## 🚀 Installation
 
 ```bash

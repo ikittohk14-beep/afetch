@@ -36,6 +36,82 @@ import termios
 import time
 import tty
 
+# Optional Pillow integration for GIF rendering
+try:
+    from PIL import Image, ImageSequence
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
+# ── Terminal Detection & Safety Helpers ───────────────────────
+
+def is_real_interactive_terminal() -> bool:
+    """Detect whether afetch is running inside a genuine interactive user terminal.
+
+    Returns False if running in a non-interactive subshell, script, pipe, CI,
+    background runner, or dumb terminal, preventing hangs, swallowed keystrokes,
+    and corrupted terminal buffers.
+    """
+    # 1. Both stdin and stdout must be real TTYs
+    try:
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            return False
+    except Exception:
+        return False
+
+    # 2. Check TERM environment variable
+    term = os.environ.get("TERM", "").strip().lower()
+    if not term or term in ("dumb", "unknown", "emacs"):
+        return False
+
+    # 3. Check for headless, CI, or automated script environments
+    if os.environ.get("DEBIAN_FRONTEND") == "noninteractive":
+        return False
+    if os.environ.get("CI") in ("true", "1", "yes"):
+        return False
+
+    # 4. Check terminal dimensions
+    try:
+        cols, rows = shutil.get_terminal_size((0, 0))
+        if cols < 30 or rows < 8:
+            return False
+    except Exception:
+        return False
+
+    # 5. Verify termios can interact with stdin fileno
+    try:
+        termios.tcgetattr(sys.stdin.fileno())
+    except Exception:
+        return False
+
+    return True
+
+
+def has_pending_stdin() -> bool:
+    """Check if input is already buffered in stdin (e.g. pasted commands)."""
+    try:
+        if not sys.stdin.isatty():
+            return False
+        r, _, _ = select.select([sys.stdin], [], [], 0)
+        return bool(r)
+    except Exception:
+        return False
+
+
+def get_terminal_diagnostics() -> dict:
+    """Gather diagnostic info about terminal environment."""
+    cols, rows = shutil.get_terminal_size((0, 0))
+    return {
+        "real_interactive_tty": is_real_interactive_terminal(),
+        "stdin_isatty": getattr(sys.stdin, "isatty", lambda: False)(),
+        "stdout_isatty": getattr(sys.stdout, "isatty", lambda: False)(),
+        "term": os.environ.get("TERM"),
+        "dimensions": f"{cols}x{rows}",
+        "pending_stdin": has_pending_stdin(),
+        "has_pil": HAS_PIL,
+    }
+
+
 # ── ANSI Truecolor Palette (Matugen Slate) ──────────────────
 COLOR_RESET = "\033[0m"
 COLOR_BOLD = "\033[1m"
@@ -72,12 +148,16 @@ _cursor_hidden = False
 def _restore_terminal():
     global _cursor_hidden, _orig_termios
     if _cursor_hidden:
-        sys.stdout.write("\033[?25h")
-        sys.stdout.flush()
+        try:
+            sys.stdout.write("\033[?25h")
+            sys.stdout.flush()
+        except Exception:
+            pass
         _cursor_hidden = False
     if _orig_termios and sys.stdin.isatty():
         try:
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _orig_termios)
+            # Use TCSANOW so unread keys in buffer are preserved for the shell!
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, _orig_termios)
         except Exception:
             pass
 
@@ -92,6 +172,7 @@ def _signal_handler(signum, frame):
 
 signal.signal(signal.SIGINT, _signal_handler)
 signal.signal(signal.SIGTERM, _signal_handler)
+
 
 
 # ── System Information Fetcher ──────────────────────────────
@@ -648,10 +729,170 @@ BUILTIN_MODES = {
 }
 
 
+# ── 3D & GIF Animation Modes ───────────────────────────────
+
+class GifRenderer:
+    """High-performance terminal GIF animator supporting Truecolor half-blocks or ASCII."""
+
+    def __init__(
+        self,
+        path: Path | str,
+        width: int = CANVAS_WIDTH,
+        height: int = CANVAS_HEIGHT,
+        style: str = "blocks",
+    ):
+        if not HAS_PIL:
+            raise RuntimeError(
+                "Pillow (PIL) is required to render GIFs. Install it with: pacman -S python-pillow"
+            )
+
+        self.path = Path(path).expanduser()
+        if not self.path.is_file():
+            raise FileNotFoundError(f"GIF file not found: {self.path}")
+
+        self.width = width
+        self.height = height
+        self.style = style
+        self.frames: list[list[str]] = []
+        self.delays: list[float] = []
+        self.start_time: float | None = None
+        self._load()
+
+    def _load(self):
+        with Image.open(self.path) as im:
+            target_h = self.height * 2 if self.style == "blocks" else self.height
+            last_frame = None
+
+            for frame in ImageSequence.Iterator(im):
+                dur = frame.info.get("duration", 100) / 1000.0
+                if dur <= 0.01:
+                    dur = 0.08
+                self.delays.append(dur)
+
+                rgba = frame.convert("RGBA")
+                if last_frame is None:
+                    last_frame = rgba.copy()
+                else:
+                    last_frame.alpha_composite(rgba)
+
+                work_img = last_frame.copy()
+
+                # Scale maintaining aspect ratio inside (self.width, target_h)
+                ratio = min(self.width / work_img.width, target_h / work_img.height)
+                nw = max(1, int(work_img.width * ratio))
+                nh = max(1, int(work_img.height * ratio))
+                resized = work_img.resize((nw, nh), Image.Resampling.BILINEAR)
+
+                canvas = Image.new("RGBA", (self.width, target_h), (0, 0, 0, 0))
+                ox = (self.width - nw) // 2
+                oy = (target_h - nh) // 2
+                canvas.paste(resized, (ox, oy))
+
+                if self.style == "blocks":
+                    self.frames.append(self._render_blocks(canvas))
+                else:
+                    self.frames.append(self._render_ascii(canvas))
+
+        self.total_duration = sum(self.delays) if self.delays else 1.0
+
+    def _render_blocks(self, canvas) -> list[str]:
+        lines = []
+        for y in range(self.height):
+            row = []
+            cur_fg = None
+            cur_bg = None
+            for x in range(self.width):
+                top = canvas.getpixel((x, y * 2))
+                bot = canvas.getpixel((x, y * 2 + 1))
+                t_a, b_a = top[3], bot[3]
+
+                if t_a < 32 and b_a < 32:
+                    if cur_fg is not None or cur_bg is not None:
+                        row.append(COLOR_RESET)
+                        cur_fg = None
+                        cur_bg = None
+                    row.append(" ")
+                elif t_a >= 32 and b_a < 32:
+                    fg = (top[0], top[1], top[2])
+                    code = ""
+                    if cur_bg is not None:
+                        code += "\033[49m"
+                        cur_bg = None
+                    if cur_fg != fg:
+                        code += f"\033[38;2;{fg[0]};{fg[1]};{fg[2]}m"
+                        cur_fg = fg
+                    row.append(code + "▀")
+                elif t_a < 32 and b_a >= 32:
+                    fg = (bot[0], bot[1], bot[2])
+                    code = ""
+                    if cur_bg is not None:
+                        code += "\033[49m"
+                        cur_bg = None
+                    if cur_fg != fg:
+                        code += f"\033[38;2;{fg[0]};{fg[1]};{fg[2]}m"
+                        cur_fg = fg
+                    row.append(code + "▄")
+                else:
+                    fg = (top[0], top[1], top[2])
+                    bg = (bot[0], bot[1], bot[2])
+                    code = ""
+                    if cur_fg != fg:
+                        code += f"\033[38;2;{fg[0]};{fg[1]};{fg[2]}m"
+                        cur_fg = fg
+                    if cur_bg != bg:
+                        code += f"\033[48;2;{bg[0]};{bg[1]};{bg[2]}m"
+                        cur_bg = bg
+                    row.append(code + "▀")
+            if cur_fg is not None or cur_bg is not None:
+                row.append(COLOR_RESET)
+            lines.append("".join(row))
+        return lines
+
+    def _render_ascii(self, canvas) -> list[str]:
+        ascii_chars = " .·:+=*#%@"
+        lines = []
+        for y in range(self.height):
+            row = []
+            cur_fg = None
+            for x in range(self.width):
+                px = canvas.getpixel((x, y))
+                if px[3] < 32:
+                    if cur_fg is not None:
+                        row.append(COLOR_RESET)
+                        cur_fg = None
+                    row.append(" ")
+                else:
+                    lum = int(0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2])
+                    ch = ascii_chars[int(lum / 256 * len(ascii_chars))]
+                    fg = (px[0], px[1], px[2])
+                    code = ""
+                    if cur_fg != fg:
+                        code += f"\033[38;2;{fg[0]};{fg[1]};{fg[2]}m"
+                        cur_fg = fg
+                    row.append(code + ch)
+            if cur_fg is not None:
+                row.append(COLOR_RESET)
+            lines.append("".join(row))
+        return lines
+
+    def __call__(self, angle: float = 0.0) -> list[str]:
+        if not self.frames:
+            return [" " * self.width] * self.height
+        if self.start_time is None:
+            self.start_time = time.time()
+        elapsed = (time.time() - self.start_time) % self.total_duration
+        t = 0.0
+        for idx, d in enumerate(self.delays):
+            t += d
+            if elapsed < t:
+                return self.frames[idx]
+        return self.frames[-1]
+
+
 # ── Custom Animation Discovery System ──────────────────────
 
-def discover_custom_modes() -> dict:
-    """Discover user-created animation modes from ~/.config/afetch/."""
+def discover_custom_modes(gif_style: str = "blocks") -> dict:
+    """Discover user-created animation modes and GIFs from ~/.config/afetch/."""
     custom = {}
     config_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch"
 
@@ -667,7 +908,7 @@ def discover_custom_modes() -> dict:
                     spec.loader.exec_module(mod)
                     if hasattr(mod, "render"):
                         custom[mod_name] = getattr(mod, "render")
-            except Exception as e:
+            except Exception:
                 pass
 
     # 2. Text frame animations in ~/.config/afetch/frames/*.txt
@@ -683,7 +924,6 @@ def discover_custom_modes() -> dict:
                         def frame_renderer(angle: float):
                             f_idx = int(angle * 4.0) % len(frames_list)
                             f_lines = frames_list[f_idx]
-                            # Pad/clip to CANVAS_HEIGHT
                             out = []
                             for i in range(CANVAS_HEIGHT):
                                 if i < len(f_lines):
@@ -694,6 +934,26 @@ def discover_custom_modes() -> dict:
                             return out
                         return frame_renderer
                     custom[anim_name] = make_frame_renderer(raw_frames)
+            except Exception:
+                pass
+
+    # 3. User GIF animations in ~/.config/afetch/gifs/*.gif
+    gifs_dir = config_dir / "gifs"
+    if gifs_dir.is_dir() and HAS_PIL:
+        for gif_file in gifs_dir.glob("*.gif"):
+            try:
+                anim_name = gif_file.stem
+                def make_gif_renderer(gpath, gstyle):
+                    _cached = None
+                    def _renderer(angle: float = 0.0):
+                        nonlocal _cached
+                        if _cached is None:
+                            _cached = GifRenderer(gpath, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=gstyle)
+                        return _cached(angle)
+                    return _renderer
+                renderer_fn = make_gif_renderer(gif_file, gif_style)
+                custom[anim_name] = renderer_fn
+                custom[gif_file.name] = renderer_fn
             except Exception:
                 pass
 
@@ -744,15 +1004,27 @@ def compose_centered_card(art_lines: list[str], info_lines: list[str]) -> str:
 def run_animated(info: dict, render_fn, fps: int = 35):
     """Run continuous 3D rotation until any key is pressed or Ctrl+C."""
     global _cursor_hidden, _orig_termios
+
+    # Safety Guard: If input is already waiting in stdin (e.g. pasted commands or automated input),
+    # immediately exit so we never consume or corrupt the user's input stream!
+    if has_pending_stdin():
+        return
+
+    # Guard against non-interactive environments
+    if not is_real_interactive_terminal():
+        return
+
     info_lines = build_info_lines(info)
     frame_delay = 1.0 / max(fps, 1)
 
-    is_tty = sys.stdin.isatty() and sys.stdout.isatty()
-    if is_tty:
+    try:
         _orig_termios = termios.tcgetattr(sys.stdin.fileno())
         tty.setcbreak(sys.stdin.fileno())
         sys.stdout.write("\033[?25l")
         _cursor_hidden = True
+    except Exception:
+        # If termios configuration fails, safely return without hanging
+        return
 
     angle = 0.0
 
@@ -761,11 +1033,16 @@ def run_animated(info: dict, render_fn, fps: int = 35):
         sys.stdout.flush()
 
         while True:
-            if is_tty:
+            # Check for keypress or pasted text without blocking
+            try:
                 r, _, _ = select.select([sys.stdin], [], [], 0)
                 if r:
-                    sys.stdin.read(1)
+                    # User pressed a key or pasted input!
+                    # Do NOT swallow the key with sys.stdin.read(1)!
+                    # Leaving it unread allows the calling shell (fish/bash) to receive it intact.
                     break
+            except Exception:
+                break
 
             art_lines = render_fn(angle)
             card = compose_centered_card(art_lines, info_lines)
@@ -783,14 +1060,27 @@ def run_animated(info: dict, render_fn, fps: int = 35):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="afetch — Minimalist animated 3D ASCII system information fetch."
+        description="afetch — Minimalist animated 3D ASCII and GIF system information fetch."
     )
     parser.add_argument(
         "-m",
         "--mode",
         type=str,
         default="globe",
-        help="Animation preset or custom mode name (default: globe).",
+        help="Animation preset, custom mode name, or path to a .gif file (default: globe).",
+    )
+    parser.add_argument(
+        "-g",
+        "--gif",
+        type=str,
+        default=None,
+        help="Path or name of a GIF file to play instead of 3D ASCII.",
+    )
+    parser.add_argument(
+        "--gif-style",
+        choices=["blocks", "ascii"],
+        default="blocks",
+        help="Render style for GIF: 'blocks' (Truecolor half-blocks) or 'ascii' (default: blocks).",
     )
     parser.add_argument(
         "-r",
@@ -813,15 +1103,38 @@ def main():
     parser.add_argument(
         "--list-modes",
         action="store_true",
-        help="List all available animation presets (built-in and custom) and exit.",
+        help="List all available animation presets (built-in, custom, and GIFs) and exit.",
+    )
+    parser.add_argument(
+        "--check-terminal",
+        action="store_true",
+        help="Inspect whether current environment is a genuine interactive terminal and exit.",
+    )
+    parser.add_argument(
+        "--force-terminal",
+        action="store_true",
+        help="Force animation even if terminal safety checks detect a non-interactive shell.",
     )
     args = parser.parse_args()
 
-    custom_modes = discover_custom_modes()
+    # Diagnostic flag
+    if args.check_terminal:
+        diag = get_terminal_diagnostics()
+        print("afetch Terminal Diagnostics:")
+        print(f"  • Real Interactive TTY : {'YES' if diag['real_interactive_tty'] else 'NO'}")
+        print(f"  • stdin isatty         : {diag['stdin_isatty']}")
+        print(f"  • stdout isatty        : {diag['stdout_isatty']}")
+        print(f"  • TERM                 : {diag['term']!r}")
+        print(f"  • Terminal Dimensions  : {diag['dimensions']}")
+        print(f"  • Pending Input        : {diag['pending_stdin']}")
+        print(f"  • Pillow (PIL) for GIF : {'AVAILABLE' if diag['has_pil'] else 'NOT INSTALLED'}")
+        sys.exit(0 if diag["real_interactive_tty"] else 1)
+
+    custom_modes = discover_custom_modes(gif_style=args.gif_style)
     all_modes = {**BUILTIN_MODES, **custom_modes}
 
     if args.list_modes:
-        print("Built-in animation modes in afetch:")
+        print("Built-in 3D animation modes in afetch:")
         print("  • globe   / planet  - 3D Raymarched Planet with continental terrain")
         print("  • saturn            - 3D Planet with Tilted Orbital Rings")
         print("  • donut   / torus   - Classic Dual-Axis 3D Mathematical Torus")
@@ -831,16 +1144,40 @@ def main():
         print("  • cat     / neko    - Animated Pixel Cat with blinking eyes & swishing tail")
         print("  • heart             - Pulsing 3D Mathematical Heart")
         if custom_modes:
-            print("\nUser custom modes (~/.config/afetch/):")
+            print("\nUser custom modes & GIFs (~/.config/afetch/):")
             for cm in sorted(custom_modes.keys()):
                 print(f"  • {cm}")
         return
 
-    mode_name = args.mode.lower()
-    if args.random:
-        mode_name = random.choice(list(all_modes.keys()))
+    render_fn = None
 
-    render_fn = all_modes.get(mode_name, render_globe)
+    # Option 1: Direct --gif argument
+    if args.gif:
+        gif_candidate = Path(args.gif).expanduser()
+        if not gif_candidate.is_file():
+            # Check ~/.config/afetch/gifs/<name>
+            cfg_dir = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "afetch" / "gifs"
+            if (cfg_dir / f"{args.gif}.gif").is_file():
+                gif_candidate = cfg_dir / f"{args.gif}.gif"
+            elif (cfg_dir / args.gif).is_file():
+                gif_candidate = cfg_dir / args.gif
+            else:
+                print(f"afetch: GIF file not found: {args.gif}", file=sys.stderr)
+                sys.exit(1)
+        render_fn = GifRenderer(gif_candidate, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=args.gif_style)
+
+    # Option 2: -m pointing directly to a .gif file
+    elif args.mode and (args.mode.lower().endswith(".gif") or Path(args.mode).expanduser().is_file()):
+        file_candidate = Path(args.mode).expanduser()
+        if file_candidate.is_file() and (file_candidate.suffix.lower() == ".gif" or file_candidate.name.endswith(".gif")):
+            render_fn = GifRenderer(file_candidate, width=CANVAS_WIDTH, height=CANVAS_HEIGHT, style=args.gif_style)
+
+    if render_fn is None:
+        mode_name = args.mode.lower()
+        if args.random:
+            mode_name = random.choice(list(all_modes.keys()))
+        render_fn = all_modes.get(mode_name, render_globe)
+
     info = fetch_system_info()
 
     if args.static:
@@ -848,6 +1185,12 @@ def main():
         info_lines = build_info_lines(info)
         print(compose_centered_card(art, info_lines))
         return
+
+    # ── Real Terminal Safety Guard for Animation ─────────────────
+    # If afetch is launched in a non-interactive shell (automated tool execution,
+    # IDE subtasks, scp/git hooks, or background pipes), avoid hanging or breaking stdin:
+    if not args.force_terminal and not is_real_interactive_terminal():
+        sys.exit(0)
 
     run_animated(info, render_fn, fps=args.fps)
 
