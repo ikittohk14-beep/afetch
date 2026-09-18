@@ -275,9 +275,11 @@ afetch -m mycat
 # Or pass a path directly:
 afetch --gif ~/Pictures/animation.gif
 
-# Choose between Truecolor half-blocks (default) or ASCII character style:
-afetch --gif ~/Pictures/animation.gif --gif-style blocks
-afetch --gif ~/Pictures/animation.gif --gif-style ascii
+# Choose rendering styles:
+afetch -m mycat --kitty                 # Native HD pixel graphics via Kitty protocol (Maximum Quality!)
+afetch -m mycat --gif-style quad        # 2x2 subpixel quadrants (56x30 double resolution)
+afetch -m mycat --gif-style blocks      # Sharp Truecolor half-blocks (Lanczos + UnsharpMask)
+afetch -m mycat --gif-style ascii       # Classic ASCII character style
 ```
 
 ---

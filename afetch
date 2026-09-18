@@ -36,9 +36,12 @@ import termios
 import time
 import tty
 
+import base64
+import io
+
 # Optional Pillow integration for GIF rendering
 try:
-    from PIL import Image, ImageSequence
+    from PIL import Image, ImageFilter, ImageSequence
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -143,10 +146,18 @@ CARD_RAW_HEIGHT = 15
 # Terminal cleanup state
 _orig_termios = None
 _cursor_hidden = False
+_kitty_used = False
 
 
 def _restore_terminal():
-    global _cursor_hidden, _orig_termios
+    global _cursor_hidden, _orig_termios, _kitty_used
+    if _kitty_used:
+        try:
+            # Clear Kitty graphics protocol images from terminal
+            sys.stdout.write("\033_Ga=d,d=a\033\\")
+            sys.stdout.flush()
+        except Exception:
+            pass
     if _cursor_hidden:
         try:
             sys.stdout.write("\033[?25h")
@@ -731,8 +742,17 @@ BUILTIN_MODES = {
 
 # ── 3D & GIF Animation Modes ───────────────────────────────
 
+QUADRANTS = [
+    " ", "▗", "▖", "▄",
+    "▝", "▐", "▞", "▟",
+    "▘", "▚", "▌", "▙",
+    "▀", "▜", "▛", "█"
+]
+
+
 class GifRenderer:
-    """High-performance terminal GIF animator supporting Truecolor half-blocks or ASCII."""
+    """High-performance terminal GIF animator supporting Kitty Graphics Protocol,
+    Truecolor quadrants, half-blocks, or ASCII."""
 
     def __init__(
         self,
@@ -752,7 +772,7 @@ class GifRenderer:
 
         self.width = width
         self.height = height
-        self.style = style
+        self.style = style.lower()
         self.frames: list[list[str]] = []
         self.delays: list[float] = []
         self.start_time: float | None = None
@@ -760,7 +780,6 @@ class GifRenderer:
 
     def _load(self):
         with Image.open(self.path) as im:
-            target_h = self.height * 2 if self.style == "blocks" else self.height
             last_frame = None
 
             for frame in ImageSequence.Iterator(im):
@@ -777,23 +796,130 @@ class GifRenderer:
 
                 work_img = last_frame.copy()
 
-                # Scale maintaining aspect ratio inside (self.width, target_h)
-                ratio = min(self.width / work_img.width, target_h / work_img.height)
-                nw = max(1, int(work_img.width * ratio))
-                nh = max(1, int(work_img.height * ratio))
-                resized = work_img.resize((nw, nh), Image.Resampling.BILINEAR)
+                if self.style == "kitty":
+                    # High-DPI native GPU pixel rendering for Kitty terminal
+                    target_w = self.width * 10
+                    target_h = self.height * 20
+                    ratio = min(target_w / work_img.width, target_h / work_img.height)
+                    nw = max(1, int(work_img.width * ratio))
+                    nh = max(1, int(work_img.height * ratio))
+                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                    self.frames.append(self._render_kitty(canvas))
 
-                canvas = Image.new("RGBA", (self.width, target_h), (0, 0, 0, 0))
-                ox = (self.width - nw) // 2
-                oy = (target_h - nh) // 2
-                canvas.paste(resized, (ox, oy))
+                elif self.style == "quad":
+                    # Subpixel 2x2 quadrants (56x30 resolution: 2x horizontal detail)
+                    target_w = self.width * 2
+                    target_h = self.height * 2
+                    work_img = work_img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=150, threshold=2))
+                    ratio = min(target_w / work_img.width, target_h / work_img.height)
+                    nw = max(1, int(work_img.width * ratio))
+                    nh = max(1, int(work_img.height * ratio))
+                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                    self.frames.append(self._render_quad(canvas))
 
-                if self.style == "blocks":
-                    self.frames.append(self._render_blocks(canvas))
-                else:
+                elif self.style == "ascii":
+                    target_w = self.width
+                    target_h = self.height
+                    ratio = min(target_w / work_img.width, target_h / work_img.height)
+                    nw = max(1, int(work_img.width * ratio))
+                    nh = max(1, int(work_img.height * ratio))
+                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
                     self.frames.append(self._render_ascii(canvas))
 
+                else:  # "blocks"
+                    target_w = self.width
+                    target_h = self.height * 2
+                    # Lanczos + UnsharpMask to eliminate blur
+                    work_img = work_img.filter(ImageFilter.UnsharpMask(radius=1.8, percent=160, threshold=2))
+                    ratio = min(target_w / work_img.width, target_h / work_img.height)
+                    nw = max(1, int(work_img.width * ratio))
+                    nh = max(1, int(work_img.height * ratio))
+                    resized = work_img.resize((nw, nh), Image.Resampling.LANCZOS)
+                    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+                    canvas.paste(resized, ((target_w - nw) // 2, (target_h - nh) // 2))
+                    self.frames.append(self._render_blocks(canvas))
+
         self.total_duration = sum(self.delays) if self.delays else 1.0
+
+    def _render_kitty(self, canvas) -> list[str]:
+        global _kitty_used
+        _kitty_used = True
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG", compress_level=1)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        chunks = [b64[i : i + 4096] for i in range(0, len(b64), 4096)]
+        seq = []
+        for i, c in enumerate(chunks):
+            m = 1 if i < len(chunks) - 1 else 0
+            if i == 0:
+                seq.append(f"\033_Ga=T,f=100,c={self.width},r={self.height},q=2,m={m};{c}\033\\")
+            else:
+                seq.append(f"\033_Gm={m};{c}\033\\")
+        kitty_packet = "".join(seq)
+        lines = [" " * self.width] * self.height
+        lines[0] = kitty_packet + lines[0]
+        return lines
+
+    def _render_quad(self, canvas) -> list[str]:
+        lines = []
+        for y in range(self.height):
+            row = []
+            cur_fg, cur_bg = None, None
+            for x in range(self.width):
+                tl = canvas.getpixel((x * 2, y * 2))
+                tr = canvas.getpixel((x * 2 + 1, y * 2))
+                bl = canvas.getpixel((x * 2, y * 2 + 1))
+                br = canvas.getpixel((x * 2 + 1, y * 2 + 1))
+                pts = [tl, tr, bl, br]
+
+                opaques = [p for p in pts if p[3] >= 32]
+                if not opaques:
+                    if cur_fg is not None or cur_bg is not None:
+                        row.append(COLOR_RESET)
+                        cur_fg, cur_bg = None, None
+                    row.append(" ")
+                    continue
+
+                lums = [int(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) if p[3] >= 32 else -1 for p in pts]
+                valid_lums = [l for l in lums if l >= 0]
+                mid_lum = sum(valid_lums) / len(valid_lums)
+
+                fg_pts = [p for p, l in zip(pts, lums) if l >= mid_lum]
+                bg_pts = [p for p, l in zip(pts, lums) if 0 <= l < mid_lum]
+                if not fg_pts:
+                    fg_pts = opaques
+                if not bg_pts:
+                    bg_pts = fg_pts
+
+                avg_fg = (sum(p[0] for p in fg_pts) // len(fg_pts), sum(p[1] for p in fg_pts) // len(fg_pts), sum(p[2] for p in fg_pts) // len(fg_pts))
+                avg_bg = (sum(p[0] for p in bg_pts) // len(bg_pts), sum(p[1] for p in bg_pts) // len(bg_pts), sum(p[2] for p in bg_pts) // len(bg_pts))
+
+                mask = 0
+                if lums[0] >= mid_lum: mask |= 8
+                if lums[1] >= mid_lum: mask |= 4
+                if lums[2] >= mid_lum: mask |= 2
+                if lums[3] >= mid_lum: mask |= 1
+
+                ch = QUADRANTS[mask]
+                code = ""
+                if cur_fg != avg_fg:
+                    code += f"\033[38;2;{avg_fg[0]};{avg_fg[1]};{avg_fg[2]}m"
+                    cur_fg = avg_fg
+                if cur_bg != avg_bg and ch != "█":
+                    code += f"\033[48;2;{avg_bg[0]};{avg_bg[1]};{avg_bg[2]}m"
+                    cur_bg = avg_bg
+                row.append(code + ch)
+
+            if cur_fg is not None or cur_bg is not None:
+                row.append(COLOR_RESET)
+            lines.append("".join(row))
+        return lines
 
     def _render_blocks(self, canvas) -> list[str]:
         lines = []
@@ -1078,9 +1204,14 @@ def main():
     )
     parser.add_argument(
         "--gif-style",
-        choices=["blocks", "ascii"],
-        default="blocks",
-        help="Render style for GIF: 'blocks' (Truecolor half-blocks) or 'ascii' (default: blocks).",
+        choices=["blocks", "quad", "kitty", "ascii"],
+        default="quad",
+        help="Render style for GIF: 'quad' (subpixel quadrants, default), 'kitty' (native HD pixel graphics), 'blocks' (half-blocks), or 'ascii'.",
+    )
+    parser.add_argument(
+        "--kitty",
+        action="store_true",
+        help="Use native HD Kitty Graphics Protocol for pixel-perfect GIF rendering in Kitty.",
     )
     parser.add_argument(
         "-r",
@@ -1116,6 +1247,9 @@ def main():
         help="Force animation even if terminal safety checks detect a non-interactive shell.",
     )
     args = parser.parse_args()
+
+    if args.kitty:
+        args.gif_style = "kitty"
 
     # Diagnostic flag
     if args.check_terminal:
